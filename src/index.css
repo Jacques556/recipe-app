@@ -1,13 +1,10 @@
-<<<<<<< HEAD
-@import "tailwindcss";@tailwind base;
-=======
 @tailwind base;
->>>>>>> 7ab1d3110491af521e201fae246d09d3d6262b3b
 @tailwind components;
 @tailwind utilities;
 
 body {
   margin: 0;
-  background-color: #f3f4f6;
+  background-color: #0f172a;
+  color: #f8fafc;
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
 }
