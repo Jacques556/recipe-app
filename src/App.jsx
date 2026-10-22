@@ -5,7 +5,7 @@ import {
 } from 'firebase/firestore';
 import { 
   Utensils, Plus, Search, Trash2, Edit3, Heart, Clock, Users, Play, Pause, RotateCcw, 
-  MapPin, DollarSign, Star, Sparkles, X, Upload, Image as ImageIcon, Flame, Check, Bookmark, ChefHat
+  MapPin, DollarSign, Star, Sparkles, X, Upload, Image as ImageIcon, Flame, Check, Bookmark, ChefHat, User
 } from 'lucide-react';
 
 // Firebase configuration placeholder - falls back to local storage if non-functional or offline
@@ -26,6 +26,16 @@ try {
   console.warn("Firebase initialized in demo/fallback mode.");
 }
 
+// Color options for family members to choose from
+const COLOR_OPTIONS = [
+  { name: 'Amber Gold', value: '#f59e0b' },
+  { name: 'Emerald Green', value: '#10b981' },
+  { name: 'Blue', value: '#3b82f6' },
+  { name: 'Purple', value: '#8b5cf6' },
+  { name: 'Rose Red', value: '#f43f5e' },
+  { name: 'Teal', value: '#14b8a6' },
+];
+
 // Sample Initial Recipes
 const INITIAL_RECIPES = [
   {
@@ -36,6 +46,8 @@ const INITIAL_RECIPES = [
     servings: 4,
     calories: 420,
     isFavorite: true,
+    author: 'Mom',
+    color: '#f59e0b',
     photo: 'https://images.unsplash.com/photo-1633964913295-ceb43826e7c9?auto=format&fit=crop&q=80&w=800',
     ingredients: [
       '1.5 cups Arborio rice',
@@ -60,6 +72,8 @@ const INITIAL_RECIPES = [
     servings: 2,
     calories: 520,
     isFavorite: false,
+    author: 'James',
+    color: '#3b82f6',
     photo: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=800',
     ingredients: [
       '2 Salmon fillets',
@@ -124,12 +138,14 @@ export default function App() {
     cookTime: 25,
     servings: 2,
     calories: 350,
+    author: '',
+    color: '#f59e0b',
     photo: '',
     ingredientsText: '',
     instructionsText: ''
   });
 
-  // Form States - Discovered Food
+ // Form States - Discovered Food
   const [discoveredForm, setDiscoveredForm] = useState({
     restaurant: '',
     location: '',
@@ -140,197 +156,6 @@ export default function App() {
     recreateAtHome: false,
     photo: ''
   });
-
-  // Load Initial Data
-  useEffect(() => {
-    const savedRecipes = localStorage.getItem('tastylog_recipes');
-    const savedDiscovered = localStorage.getItem('tastylog_discovered');
-    const savedTitle = localStorage.getItem('tastylog_title');
-
-    if (savedTitle) setAppTitle(savedTitle);
-
-    if (savedRecipes) {
-      try { setRecipes(JSON.parse(savedRecipes)); } catch(e) { setRecipes(INITIAL_RECIPES); }
-    } else {
-      setRecipes(INITIAL_RECIPES);
-    }
-
-    if (savedDiscovered) {
-      try { setDiscoveredFoods(JSON.parse(savedDiscovered)); } catch(e) { setDiscoveredFoods(INITIAL_DISCOVERED); }
-    } else {
-      setDiscoveredFoods(INITIAL_DISCOVERED);
-    }
-
-    // Attempt Firebase sync if available
-    if (db) {
-      try {
-        const qRecipes = query(collection(db, 'recipes'), orderBy('createdAt', 'desc'));
-        const unsubscribeRecipes = onSnapshot(qRecipes, (snapshot) => {
-          if (!snapshot.empty) {
-            const fbData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setRecipes(fbData);
-          }
-        }, err => console.log('Firebase fallback active'));
-
-        return () => unsubscribeRecipes && unsubscribeRecipes();
-      } catch (e) {
-        console.log("Firebase listener error");
-      }
-    }
-  }, []);
-
-  // Save to LocalStorage on changes
-  useEffect(() => {
-    localStorage.setItem('tastylog_recipes', JSON.stringify(recipes));
-  }, [recipes]);
-
-  useEffect(() => {
-    localStorage.setItem('tastylog_discovered', JSON.stringify(discoveredFoods));
-  }, [discoveredFoods]);
-
-  useEffect(() => {
-    localStorage.setItem('tastylog_title', appTitle);
-  }, [appTitle]);
-
-  // Cooking Timer logic
-  useEffect(() => {
-    let interval = null;
-    if (isTimerRunning && timerSeconds > 0) {
-      interval = setInterval(() => setTimerSeconds(prev => prev - 1), 1000);
-    } else if (timerSeconds === 0) {
-      setIsTimerRunning(false);
-    }
-    return () => clearInterval(interval);
-  }, [isTimerRunning, timerSeconds]);
-
-  // Helper: Image File Upload to Base64
-  const handleImageUpload = (e, callback) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        callback(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  // Recipe Form Submission
-  const handleSaveRecipe = async (e) => {
-    e.preventDefault();
-    const ingredients = recipeForm.ingredientsText.split('\n').filter(i => i.trim() !== '');
-    const instructions = recipeForm.instructionsText.split('\n').filter(i => i.trim() !== '');
-
-    const newRecipeData = {
-      title: recipeForm.title || 'Untitled Dish',
-      category: recipeForm.category,
-      cookTime: Number(recipeForm.cookTime) || 15,
-      servings: Number(recipeForm.servings) || 1,
-      calories: Number(recipeForm.calories) || 0,
-      photo: recipeForm.photo || 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&q=80&w=800',
-      ingredients,
-      instructions,
-      isFavorite: editingRecipe ? editingRecipe.isFavorite : false,
-      updatedAt: new Date().toISOString()
-    };
-
-    if (editingRecipe) {
-      setRecipes(recipes.map(r => r.id === editingRecipe.id ? { ...newRecipeData, id: editingRecipe.id } : r));
-      if (db) {
-        try { await updateDoc(doc(db, 'recipes', editingRecipe.id), newRecipeData); } catch(err){}
-      }
-    } else {
-      const newId = 'rec_' + Date.now();
-      const created = { ...newRecipeData, id: newId };
-      setRecipes([created, ...recipes]);
-      if (db) {
-        try { await addDoc(collection(db, 'recipes'), { ...newRecipeData, createdAt: serverTimestamp() }); } catch(err){}
-      }
-    }
-
-    setIsRecipeModalOpen(false);
-    setEditingRecipe(null);
-    resetRecipeForm();
-  };
-
-  const resetRecipeForm = () => {
-    setRecipeForm({
-      title: '',
-      category: 'Dinner',
-      cookTime: 25,
-      servings: 2,
-      calories: 350,
-      photo: '',
-      ingredientsText: '',
-      instructionsText: ''
-    });
-  };
-
-  const openRecipeEdit = (recipe) => {
-    setEditingRecipe(recipe);
-    setRecipeForm({
-      title: recipe.title,
-      category: recipe.category,
-      cookTime: recipe.cookTime,
-      servings: recipe.servings,
-      calories: recipe.calories,
-      photo: recipe.photo,
-      ingredientsText: recipe.ingredients ? recipe.ingredients.join('\n') : '',
-      instructionsText: recipe.instructions ? recipe.instructions.join('\n') : ''
-    });
-    setIsRecipeModalOpen(true);
-  };
-
-  const toggleFavorite = (id) => {
-    setRecipes(recipes.map(r => r.id === id ? { ...r, isFavorite: !r.isFavorite } : r));
-  };
-
-  const deleteRecipe = (id) => {
-    setRecipes(recipes.filter(r => r.id !== id));
-    if (db) {
-      try { deleteDoc(doc(db, 'recipes', id)); } catch(err){}
-    }
-  };
-
-  // Discovered Form Submission
-  const handleSaveDiscovered = async (e) => {
-    e.preventDefault();
-    const newDiscoveredData = {
-      restaurant: discoveredForm.restaurant || 'Unknown Restaurant',
-      location: discoveredForm.location || 'Local Area',
-      dishName: discoveredForm.dishName || 'Tasty Dish',
-      rating: Number(discoveredForm.rating),
-      priceTier: discoveredForm.priceTier,
-      tastingNotes: discoveredForm.tastingNotes,
-      recreateAtHome: discoveredForm.recreateAtHome,
-      photo: discoveredForm.photo || 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&q=80&w=800',
-      dateAdded: new Date().toISOString().split('T')[0]
-    };
-
-    if (editingDiscovered) {
-      setDiscoveredFoods(discoveredFoods.map(d => d.id === editingDiscovered.id ? { ...newDiscoveredData, id: editingDiscovered.id } : d));
-    } else {
-      const newId = 'disc_' + Date.now();
-      setDiscoveredFoods([{ ...newDiscoveredData, id: newId }, ...discoveredFoods]);
-    }
-
-    setIsDiscoveredModalOpen(false);
-    setEditingDiscovered(null);
-    resetDiscoveredForm();
-  };
-
-  const resetDiscoveredForm = () => {
-    setDiscoveredForm({
-      restaurant: '',
-      location: '',
-      dishName: '',
-      rating: 5,
-      priceTier: '$$',
-      tastingNotes: '',
-      recreateAtHome: false,
-      photo: ''
-    });
-  };
 
   const openDiscoveredEdit = (item) => {
     setEditingDiscovered(item);
@@ -368,7 +193,8 @@ export default function App() {
 
   const filteredRecipes = recipes.filter(r => {
     const matchesSearch = r.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          r.category.toLowerCase().includes(searchQuery.toLowerCase());
+                          r.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          (r.author && r.author.toLowerCase().includes(searchQuery.toLowerCase()));
     if (selectedCategory === 'All') return matchesSearch;
     if (selectedCategory === 'Favorites') return matchesSearch && r.isFavorite;
     return matchesSearch && r.category === selectedCategory;
@@ -387,11 +213,13 @@ export default function App() {
       <header className="sticky top-0 z-30 bg-slate-900/80 backdrop-blur-md border-b border-slate-800/80 px-4 py-4 md:px-8 transition-all">
         <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
           
-          {/* Editable App Title */}
+          {/* Editable App Title & Custom Logo */}
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-gradient-to-tr from-amber-500 to-orange-500 rounded-2xl shadow-lg shadow-amber-500/20 text-slate-950">
-              <Utensils className="w-6 h-6 stroke-[2.5]" />
-            </div>
+            <img 
+              src="/recipe.jpg" 
+              alt="TastyLog Logo" 
+              className="w-10 h-10 rounded-2xl object-cover shadow-lg border border-slate-700/60"
+            />
             {isEditingTitle ? (
               <input 
                 type="text" 
@@ -474,7 +302,7 @@ export default function App() {
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
-              placeholder={activeTab === 'recipes' ? "Search dishes or categories..." : "Search restaurant, dish, or notes..."}
+              placeholder={activeTab === 'recipes' ? "Search dishes, categories, or family author..." : "Search restaurant, dish, or notes..."}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 bg-slate-900/80 border border-slate-800 rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all"
@@ -514,9 +342,10 @@ export default function App() {
                 {filteredRecipes.map((recipe) => (
                   <div 
                     key={recipe.id}
-                    className="group bg-slate-900/80 border border-slate-800/80 hover:border-slate-700/80 rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-xl hover:shadow-amber-500/5 flex flex-col"
+                    className="group bg-slate-900/80 hover:border-slate-700/80 rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-xl flex flex-col border-2"
+                    style={{ borderColor: recipe.color || '#334155' }}
                   >
-                    {/* Card Cover Image */}
+                    {/* Card Cover Image with Author Badge */}
                     <div className="relative h-48 overflow-hidden bg-slate-800">
                       <img 
                         src={recipe.photo} 
@@ -536,6 +365,16 @@ export default function App() {
                       <span className="absolute bottom-3 left-3 px-2.5 py-1 bg-slate-950/80 backdrop-blur-md rounded-lg text-xs font-semibold text-amber-400 border border-amber-500/20">
                         {recipe.category}
                       </span>
+
+                      {/* Author Tag Badge */}
+                      {recipe.author && (
+                        <span 
+                          className="absolute top-3 left-3 px-3 py-1 rounded-full text-xs font-bold text-white shadow-md backdrop-blur-md flex items-center gap-1"
+                          style={{ backgroundColor: recipe.color || '#f59e0b' }}
+                        >
+                          <User className="w-3 h-3" /> {recipe.author}
+                        </span>
+                      )}
                     </div>
 
                     {/* Card Details */}
@@ -723,6 +562,38 @@ export default function App() {
                     <option value="Dessert">Dessert</option>
                     <option value="Snack">Snack</option>
                   </select>
+                </div>
+              </div>
+
+              {/* Family Creator Name & Color Theme Selector */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-950/60 p-4 rounded-2xl border border-slate-800/80">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Created By (Family Member)</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g., Mom, James, Dad"
+                    value={recipeForm.author}
+                    onChange={(e) => setRecipeForm({ ...recipeForm, author: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Card Theme Color</label>
+                  <div className="flex items-center gap-2 pt-1.5">
+                    {COLOR_OPTIONS.map((color) => (
+                      <button
+                        key={color.value}
+                        type="button"
+                        onClick={() => setRecipeForm({ ...recipeForm, color: color.value })}
+                        className={`w-8 h-8 rounded-full border-2 transition-all ${
+                          recipeForm.color === color.value ? 'border-white scale-110 shadow-lg ring-2 ring-amber-500/50' : 'border-transparent opacity-70 hover:opacity-100'
+                        }`}
+                        style={{ backgroundColor: color.value }}
+                        title={color.name}
+                      />
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -999,7 +870,9 @@ export default function App() {
                 </div>
                 <div>
                   <h2 className="text-xl font-bold text-slate-100">{activeCookModeRecipe.title}</h2>
-                  <p className="text-xs text-slate-400">Interactive Kitchen Assistant</p>
+                  <p className="text-xs text-slate-400">
+                    Created by <span className="text-amber-400 font-semibold">{activeCookModeRecipe.author || 'Family Member'}</span>
+                  </p>
                 </div>
               </div>
               <button 

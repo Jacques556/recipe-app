@@ -1,13 +1,29 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>recipe-app</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- App Title -->
+  <title>TastyLog</title>
+
+  <!-- Browser Favicon -->
+  <link rel="icon" type="image/jpeg" href="/recipe.jpg" />
+
+  <!-- iOS & Android Home Screen Icon -->
+  <link rel="apple-touch-icon" href="/recipe.jpg" />
+
+  <!-- PWA / Mobile Web App Options -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="TastyLog" />
+  <meta name="theme-color" content="#0f172a" />
+</head>
+
+<body class="bg-slate-950 text-slate-100 min-h-screen antialiased">
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+
 </html>
