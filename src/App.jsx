@@ -903,12 +903,11 @@ export default function App() {
               {/* Family Creator Name & Color Theme Selector */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-950/60 p-4 rounded-2xl border border-slate-800/80">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Created By (Family Member)</label>
+                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Created By</label>
                   <input
                     type="text"
                     required
-                    placeholder="e.g., Mom, James, Dad"
-                    value={recipeForm.author}
+                    placeholder="Author's Name"                  value={recipeForm.author}
                     onChange={(e) => setRecipeForm({ ...recipeForm, author: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-amber-500"
                   />
