@@ -1,15 +1,14 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
-import { 
-  getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, serverTimestamp 
+import {
+  getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, serverTimestamp
 } from 'firebase/firestore';
-import { 
-  Utensils, Plus, Search, Trash2, Edit3, Heart, Clock, Users, Play, Pause, RotateCcw, 
-  MapPin, Star, Sparkles, X, Upload, Flame, Check, Bookmark, ChefHat, User, Activity,
+import {
+  Utensils, Plus, Search, Trash2, Edit3, Heart, Clock, Users, Play, Pause, RotateCcw,
+  MapPin, Star, Sparkles, X, Upload, Check, Bookmark, ChefHat, User, Activity,
   Download, FolderUp, CheckCircle2, AlertCircle
 } from 'lucide-react';
 
-// Firebase configuration - falls back gracefully to local storage when offline or in demo mode
 const firebaseConfig = {
   apiKey: "AIzaSyDemoKeyForTastyLogStorageSync123",
   authDomain: "tastylog-app.firebaseapp.com",
@@ -38,7 +37,6 @@ const COLOR_OPTIONS = [
 
 const CATEGORIES = ['All', 'Favorites', 'Italian', 'Japanese', 'Dinner', 'Breakfast', 'Dessert', 'Snack'];
 
-// Automated Calorie, Macro & Fiber Calculator from Ingredient Lines
 const calculateNutritionFromIngredients = (ingredientsText) => {
   const lines = ingredientsText.toLowerCase().split('\n');
   let totalCals = 0;
@@ -114,7 +112,6 @@ const calculateNutritionFromIngredients = (ingredientsText) => {
   };
 };
 
-// Helper: Scale ingredient text numbers when adjusting servings in Cook Mode
 const scaleIngredientLine = (line, ratio) => {
   if (ratio === 1) return line;
   return line.replace(/^(\d+(\.\d+)?)/, (match) => {
@@ -148,7 +145,7 @@ const INITIAL_RECIPES = [
       '0.5 cup Grated Parmesan'
     ],
     instructions: [
-      'Sauté shallots and mushrooms in olive oil until golden.',
+      'Saute shallots and mushrooms in olive oil until golden.',
       'Add Arborio rice and toast for 2 minutes until translucent at edges.',
       'Ladle in warm broth slowly, stirring constantly until absorbed.',
       'Finish with parmesan and drizzle with black truffle oil before serving.'
@@ -201,7 +198,6 @@ const INITIAL_DISCOVERED = [
 ];
 
 export default function App() {
-  // Navigation & Filtering State
   const [activeTab, setActiveTab] = useState('recipes');
   const [recipes, setRecipes] = useState([]);
   const [discoveredFoods, setDiscoveredFoods] = useState([]);
@@ -209,7 +205,6 @@ export default function App() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedAuthor, setSelectedAuthor] = useState('All');
 
-  // Modals & UI Feedback State
   const [isRecipeModalOpen, setIsRecipeModalOpen] = useState(false);
   const [isDiscoveredModalOpen, setIsDiscoveredModalOpen] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState(null);
@@ -217,17 +212,15 @@ export default function App() {
   const [activeCookModeRecipe, setActiveCookModeRecipe] = useState(null);
   const [cookServings, setCookServings] = useState(1);
   const [checkedIngredients, setCheckedIngredients] = useState({});
-  const [toast, setToast] = useState(null); // { message: string, type: 'success' | 'error' }
+  const [pendingDelete, setPendingDelete] = useState(null); // { type: 'recipe' | 'discovered', id: string, name: string }
+  const [toast, setToast] = useState(null);
 
-  // Editable App Branding
   const [appTitle, setAppTitle] = useState('TastyLog');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
 
-  // Cooking Timer
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
 
-  // Recipe Form State
   const [recipeForm, setRecipeForm] = useState({
     title: '',
     category: 'Dinner',
@@ -245,7 +238,6 @@ export default function App() {
     instructionsText: ''
   });
 
-  // Discovered Form State
   const [discoveredForm, setDiscoveredForm] = useState({
     restaurant: '',
     location: '',
@@ -259,7 +251,7 @@ export default function App() {
 
   const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type });
-    setTimeout(() => setToast(null), 3200);
+    setTimeout(() => setToast(null), 3000);
   }, []);
 
   const resetRecipeForm = () => {
@@ -294,7 +286,6 @@ export default function App() {
     });
   };
 
-  // Load Initial Data
   useEffect(() => {
     const savedRecipes = localStorage.getItem('tastylog_recipes');
     const savedDiscovered = localStorage.getItem('tastylog_discovered');
@@ -303,13 +294,23 @@ export default function App() {
     if (savedTitle) setAppTitle(savedTitle);
 
     if (savedRecipes) {
-      try { setRecipes(JSON.parse(savedRecipes)); } catch { setRecipes(INITIAL_RECIPES); }
+      try {
+        const parsed = JSON.parse(savedRecipes);
+        setRecipes(Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_RECIPES);
+      } catch {
+        setRecipes(INITIAL_RECIPES);
+      }
     } else {
       setRecipes(INITIAL_RECIPES);
     }
 
     if (savedDiscovered) {
-      try { setDiscoveredFoods(JSON.parse(savedDiscovered)); } catch { setDiscoveredFoods(INITIAL_DISCOVERED); }
+      try {
+        const parsed = JSON.parse(savedDiscovered);
+        setDiscoveredFoods(Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_DISCOVERED);
+      } catch {
+        setDiscoveredFoods(INITIAL_DISCOVERED);
+      }
     } else {
       setDiscoveredFoods(INITIAL_DISCOVERED);
     }
@@ -331,7 +332,6 @@ export default function App() {
     }
   }, []);
 
-  // Safe LocalStorage Persistence
   useEffect(() => {
     try {
       localStorage.setItem('tastylog_recipes', JSON.stringify(recipes));
@@ -356,10 +356,10 @@ export default function App() {
     }
   }, [appTitle]);
 
-  // Keyboard Escape handler to close active modals cleanly
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape') {
+        setPendingDelete(null);
         setIsRecipeModalOpen(false);
         setIsDiscoveredModalOpen(false);
         setActiveCookModeRecipe(null);
@@ -369,7 +369,6 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Cooking Timer
   useEffect(() => {
     let interval = null;
     if (isTimerRunning && timerSeconds > 0) {
@@ -380,7 +379,6 @@ export default function App() {
     return () => clearInterval(interval);
   }, [isTimerRunning, timerSeconds]);
 
-  // Image Compression & Resize Helper (Prevents large photo upload failures)
   const handleImageUpload = (e, callback) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -412,7 +410,6 @@ export default function App() {
     reader.readAsDataURL(file);
   };
 
-  // Auto-calculate Calories, Macros & Fiber when ingredients change
   const handleIngredientsChange = (text) => {
     const nutrition = calculateNutritionFromIngredients(text);
     setRecipeForm(prev => ({
@@ -426,7 +423,6 @@ export default function App() {
     }));
   };
 
-  // Export & Import JSON Backup
   const handleExportBackup = () => {
     const dataStr = JSON.stringify({ appTitle, recipes, discoveredFoods, exportedAt: new Date().toISOString() }, null, 2);
     const blob = new Blob([dataStr], { type: 'application/json' });
@@ -436,7 +432,7 @@ export default function App() {
     a.download = `${appTitle.toLowerCase().replace(/\s+/g, '-')}-backup.json`;
     a.click();
     URL.revokeObjectURL(url);
-    showToast('Family recipe backup downloaded!');
+    showToast('Backup downloaded!');
   };
 
   const handleImportBackup = (e) => {
@@ -449,15 +445,14 @@ export default function App() {
         if (Array.isArray(parsed.recipes)) setRecipes(parsed.recipes);
         if (Array.isArray(parsed.discoveredFoods)) setDiscoveredFoods(parsed.discoveredFoods);
         if (parsed.appTitle) setAppTitle(parsed.appTitle);
-        showToast('Backup restored successfully!');
+        showToast('Backup restored!');
       } catch {
-        showToast('Invalid backup file format.', 'error');
+        showToast('Invalid backup file.', 'error');
       }
     };
     reader.readAsText(file);
   };
 
-  // Save Recipe
   const handleSaveRecipe = async (e) => {
     e.preventDefault();
     const ingredients = recipeForm.ingredientsText.split('\n').filter(i => i.trim() !== '');
@@ -500,7 +495,7 @@ export default function App() {
     setIsRecipeModalOpen(false);
     setEditingRecipe(null);
     resetRecipeForm();
-    showToast(wasEditing ? 'Recipe updated!' : 'Recipe saved to family book!');
+    showToast(wasEditing ? 'Recipe updated!' : 'Recipe saved!');
   };
 
   const openRecipeEdit = (recipe) => {
@@ -528,16 +523,10 @@ export default function App() {
     setRecipes(prev => prev.map(r => r.id === id ? { ...r, isFavorite: !r.isFavorite } : r));
   };
 
-  const deleteRecipe = (id) => {
-    if (!window.confirm('Delete this recipe from your family collection?')) return;
-    setRecipes(prev => prev.filter(r => r.id !== id));
-    if (db) {
-      try { deleteDoc(doc(db, 'recipes', id)); } catch {}
-    }
-    showToast('Recipe removed.');
+  const requestDeleteRecipe = (recipe) => {
+    setPendingDelete({ type: 'recipe', id: recipe.id, name: recipe.title });
   };
 
-  // Save Discovered Dining Entry
   const handleSaveDiscovered = async (e) => {
     e.preventDefault();
     const newDiscoveredData = {
@@ -564,7 +553,7 @@ export default function App() {
     setIsDiscoveredModalOpen(false);
     setEditingDiscovered(null);
     resetDiscoveredForm();
-    showToast(wasEditing ? 'Dining note updated!' : 'Dining discovery saved!');
+    showToast(wasEditing ? 'Discovery updated!' : 'Discovery saved!');
   };
 
   const openDiscoveredEdit = (item) => {
@@ -582,13 +571,27 @@ export default function App() {
     setIsDiscoveredModalOpen(true);
   };
 
-  const deleteDiscovered = (id) => {
-    if (!window.confirm('Delete this dining discovery?')) return;
-    setDiscoveredFoods(prev => prev.filter(d => d.id !== id));
-    showToast('Entry deleted.');
+  const requestDeleteDiscovered = (item) => {
+    setPendingDelete({ type: 'discovered', id: item.id, name: item.dishName });
   };
 
-  // Start Cook Mode
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+
+    if (pendingDelete.type === 'recipe') {
+      setRecipes(prev => prev.filter(r => r.id !== pendingDelete.id));
+      if (db) {
+        try { await deleteDoc(doc(db, 'recipes', pendingDelete.id)); } catch {}
+      }
+      showToast('Recipe deleted!');
+    } else {
+      setDiscoveredFoods(prev => prev.filter(d => d.id !== pendingDelete.id));
+      showToast('Discovery deleted!');
+    }
+
+    setPendingDelete(null);
+  };
+
   const openCookMode = (recipe) => {
     setActiveCookModeRecipe(recipe);
     setCookServings(recipe.servings || 1);
@@ -608,13 +611,11 @@ export default function App() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Unique Family Authors List
   const familyAuthors = useMemo(() => {
     const authors = new Set(recipes.map(r => r.author).filter(Boolean));
     return ['All', ...Array.from(authors)];
   }, [recipes]);
 
-  // Memoized Filtering
   const filteredRecipes = useMemo(() => {
     const q = searchQuery.toLowerCase();
     return recipes.filter(r => {
@@ -641,210 +642,177 @@ export default function App() {
     );
   }, [discoveredFoods, searchQuery]);
 
-  // Serving Ratio for Active Cook Mode
   const servingRatio = activeCookModeRecipe
     ? cookServings / (activeCookModeRecipe.servings || 1)
     : 1;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-24 selection:bg-amber-500 selection:text-slate-950">
-      
-      {/* HEADER BAR */}
-      <header className="sticky top-0 z-30 bg-slate-900/85 backdrop-blur-lg border-b border-slate-800/80 px-4 py-3.5 md:px-8">
-        <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
-          
-          {/* Editable App Title & Logo */}
-          <div className="flex items-center gap-3">
-            <img 
-              src="/recipe.jpg" 
-              alt="App Logo" 
-              className="w-10 h-10 rounded-2xl object-cover shadow-lg border border-slate-700/60"
+
+      {/* CLEAN SINGLE-ROW HEADER */}
+      <header className="sticky top-0 z-30 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80 px-4 py-3 md:px-8">
+        <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <img
+              src="/recipe.jpg"
+              alt="App Logo"
+              className="w-9 h-9 rounded-xl object-cover border border-slate-800 shrink-0"
             />
             {isEditingTitle ? (
-              <input 
-                type="text" 
+              <input
+                type="text"
                 value={appTitle}
                 onChange={(e) => setAppTitle(e.target.value)}
                 onBlur={() => setIsEditingTitle(false)}
                 onKeyDown={(e) => e.key === 'Enter' && setIsEditingTitle(false)}
                 autoFocus
-                className="text-xl md:text-2xl font-black text-amber-400 bg-slate-800 border border-amber-500/50 rounded-lg px-2 py-0.5 outline-none focus:ring-2 focus:ring-amber-500"
+                className="text-lg font-extrabold text-amber-400 bg-slate-900 border border-amber-500/50 rounded-lg px-2 py-0.5 outline-none w-36"
               />
             ) : (
-              <div 
-                onClick={() => setIsEditingTitle(true)} 
-                className="group flex items-center gap-2 cursor-pointer"
-                title="Click to rename app"
+              <button
+                onClick={() => setIsEditingTitle(true)}
+                className="flex items-center gap-1.5 text-left truncate group"
+                title="Tap to rename"
               >
-                <h1 className="text-xl md:text-2xl font-black tracking-tight text-white group-hover:text-amber-400 transition-colors">
+                <span className="text-lg md:text-xl font-extrabold tracking-tight text-white group-hover:text-amber-400 truncate">
                   {appTitle}
-                </h1>
-                <Edit3 className="w-3.5 h-3.5 text-slate-500 group-hover:text-amber-400 opacity-60 group-hover:opacity-100 transition-all" />
-              </div>
+                </span>
+                <Edit3 className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              </button>
             )}
           </div>
 
-          {/* Right Toolbar: Backup + Primary Action */}
-          <div className="flex items-center gap-2">
+          {activeTab === 'recipes' ? (
             <button
-              onClick={handleExportBackup}
-              title="Download JSON Backup"
-              className="p-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700/60 transition-colors"
+              onClick={() => { resetRecipeForm(); setEditingRecipe(null); setIsRecipeModalOpen(true); }}
+              className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs sm:text-sm whitespace-nowrap shrink-0 active:scale-95 transition-all"
             >
-              <Download className="w-4 h-4" />
+              <Plus className="w-4 h-4 stroke-[2.5]" />
+              <span>Add Recipe</span>
             </button>
-
-            <label
-              title="Restore JSON Backup"
-              className="p-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700/60 transition-colors cursor-pointer"
+          ) : (
+            <button
+              onClick={() => { resetDiscoveredForm(); setEditingDiscovered(null); setIsDiscoveredModalOpen(true); }}
+              className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs sm:text-sm whitespace-nowrap shrink-0 active:scale-95 transition-all"
             >
-              <FolderUp className="w-4 h-4" />
-              <input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
-            </label>
-
-            {activeTab === 'recipes' ? (
-              <button
-                onClick={() => { resetRecipeForm(); setEditingRecipe(null); setIsRecipeModalOpen(true); }}
-                className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-amber-500/20 active:scale-95 text-sm"
-              >
-                <Plus className="w-4 h-4 stroke-[2.5]" />
-                <span>Add Recipe</span>
-              </button>
-            ) : (
-              <button
-                onClick={() => { resetDiscoveredForm(); setEditingDiscovered(null); setIsDiscoveredModalOpen(true); }}
-                className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-500/20 active:scale-95 text-sm"
-              >
-                <Plus className="w-4 h-4 stroke-[2.5]" />
-                <span>Log Discovery</span>
-              </button>
-            )}
-          </div>
+              <Plus className="w-4 h-4 stroke-[2.5]" />
+              <span>Add Dish</span>
+            </button>
+          )}
         </div>
       </header>
 
       {/* MAIN CONTENT */}
-      <main className="max-w-6xl mx-auto px-4 md:px-8 pt-6">
-        
-        {/* Navigation Tabs & Search */}
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 mb-6">
-          <div className="flex bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800/80 shadow-inner">
-            <button
-              onClick={() => setActiveTab('recipes')}
-              className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all ${
-                activeTab === 'recipes'
-                  ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <ChefHat className="w-4 h-4" />
-              Family Recipes ({recipes.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('discovered')}
-              className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all ${
-                activeTab === 'discovered'
-                  ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Sparkles className="w-4 h-4" />
-              Discovered Food ({discoveredFoods.length})
-            </button>
-          </div>
+      <main className="max-w-5xl mx-auto px-4 md:px-8 pt-4 space-y-4">
 
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder={activeTab === 'recipes' ? "Search dishes, categories, or family chef..." : "Search restaurant, dish, or notes..."}
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-900/80 border border-slate-800 rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all"
-            />
-          </div>
+        {/* SINGLE-LINE TABS */}
+        <div className="grid grid-cols-2 gap-1.5 bg-slate-900 p-1 rounded-2xl border border-slate-800/80">
+          <button
+            onClick={() => setActiveTab('recipes')}
+            className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl font-semibold text-xs sm:text-sm whitespace-nowrap transition-all ${
+              activeTab === 'recipes'
+                ? 'bg-amber-500 text-slate-950 font-bold shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <ChefHat className="w-4 h-4 shrink-0" />
+            <span>Recipes ({recipes.length})</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('discovered')}
+            className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl font-semibold text-xs sm:text-sm whitespace-nowrap transition-all ${
+              activeTab === 'discovered'
+                ? 'bg-emerald-500 text-slate-950 font-bold shadow-sm'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Sparkles className="w-4 h-4 shrink-0" />
+            <span>Discovered ({discoveredFoods.length})</span>
+          </button>
+        </div>
+
+        {/* SEARCH BAR */}
+        <div className="relative">
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+          <input
+            type="text"
+            placeholder={activeTab === 'recipes' ? "Search recipes or family chef..." : "Search restaurants or dishes..."}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 bg-slate-900/90 border border-slate-800 rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500/60"
+          />
         </div>
 
         {/* RECIPES VIEW */}
         {activeTab === 'recipes' && (
-          <div>
-            {/* Filter Controls: Categories + Family Authors */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-6 border-b border-slate-800/60">
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-                {CATEGORIES.map((cat) => (
+          <div className="space-y-4">
+            {/* CATEGORY PILLS */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+              {CATEGORIES.map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all border ${
+                    selectedCategory === cat
+                      ? 'bg-amber-500/15 border-amber-500 text-amber-400'
+                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            {/* AUTHOR PILLS (IF MULTIPLE CHEFS EXIST) */}
+            {familyAuthors.length > 1 && (
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                {familyAuthors.map((author) => (
                   <button
-                    key={cat}
-                    onClick={() => setSelectedCategory(cat)}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border ${
-                      selectedCategory === cat
-                        ? 'bg-amber-500/15 border-amber-500 text-amber-400'
-                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                    key={author}
+                    onClick={() => setSelectedAuthor(author)}
+                    className={`px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-all border ${
+                      selectedAuthor === author
+                        ? 'bg-slate-100 text-slate-950 border-white font-bold'
+                        : 'bg-slate-900/70 border-slate-800/80 text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    {cat}
+                    {author === 'All' ? 'All Chefs' : author}
                   </button>
                 ))}
               </div>
+            )}
 
-              {familyAuthors.length > 1 && (
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mr-1">Chef:</span>
-                  {familyAuthors.map((author) => (
-                    <button
-                      key={author}
-                      onClick={() => setSelectedAuthor(author)}
-                      className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all border ${
-                        selectedAuthor === author
-                          ? 'bg-slate-100 text-slate-950 border-white font-bold'
-                          : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      {author}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Recipes Grid */}
+            {/* RECIPE CARDS */}
             {filteredRecipes.length === 0 ? (
-              <div className="text-center py-16 bg-slate-900/40 rounded-3xl border border-dashed border-slate-800">
-                <Utensils className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                <h3 className="text-lg font-bold text-slate-300">No matching recipes</h3>
-                <p className="text-slate-500 text-sm mt-1">Clear your filters or add a new recipe to get started.</p>
+              <div className="text-center py-14 px-4 bg-slate-900/50 rounded-2xl border border-slate-800/80">
+                <Utensils className="w-10 h-10 text-slate-600 mx-auto mb-2.5" />
+                <h3 className="text-base font-bold text-slate-200">No recipes here yet</h3>
+                <p className="text-xs text-slate-500 mt-1">Tap Add Recipe above to create your first dish.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredRecipes.map((recipe) => (
-                  <div 
+                  <div
                     key={recipe.id}
-                    className="group bg-slate-900/90 rounded-2xl overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl flex flex-col border-2"
-                    style={{ borderColor: recipe.color || '#334155' }}
+                    className="bg-slate-900 rounded-2xl overflow-hidden border border-slate-800 flex flex-col"
                   >
-                    {/* Cover Image */}
-                    <div className="relative h-48 overflow-hidden bg-slate-800">
-                      <img 
-                        src={recipe.photo} 
+                    <div className="relative h-44 bg-slate-800">
+                      <img
+                        src={recipe.photo}
                         alt={recipe.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                        className="w-full h-full object-cover"
                         onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&q=80&w=800'; }}
                       />
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-85" />
-                      
                       <button
                         onClick={() => toggleFavorite(recipe.id)}
-                        className="absolute top-3 right-3 p-2 rounded-full bg-slate-950/70 backdrop-blur-md text-slate-300 hover:text-rose-400 transition-colors"
+                        className="absolute top-3 right-3 p-2 rounded-full bg-slate-950/75 text-slate-300 hover:text-rose-400"
                       >
                         <Heart className={`w-4 h-4 ${recipe.isFavorite ? 'fill-rose-500 text-rose-500' : ''}`} />
                       </button>
 
-                      <span className="absolute bottom-3 left-3 px-2.5 py-1 bg-slate-950/85 backdrop-blur-md rounded-lg text-xs font-semibold text-amber-400 border border-amber-500/20">
-                        {recipe.category}
-                      </span>
-
                       {recipe.author && (
-                        <span 
-                          className="absolute top-3 left-3 px-3 py-1 rounded-full text-xs font-bold text-white shadow-md flex items-center gap-1"
+                        <span
+                          className="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[11px] font-bold text-white shadow flex items-center gap-1"
                           style={{ backgroundColor: recipe.color || '#f59e0b' }}
                         >
                           <User className="w-3 h-3" /> {recipe.author}
@@ -852,67 +820,36 @@ export default function App() {
                       )}
                     </div>
 
-                    {/* Card Details */}
-                    <div className="p-5 flex-1 flex flex-col justify-between">
+                    <div className="p-4 flex-1 flex flex-col justify-between gap-3">
                       <div>
-                        <h3 className="font-bold text-lg text-slate-100 group-hover:text-amber-400 transition-colors line-clamp-1">
-                          {recipe.title}
-                        </h3>
-
-                        <div className="flex items-center gap-4 text-xs text-slate-400 mt-2.5">
-                          <span className="flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5 text-amber-400" />
-                            {recipe.cookTime}m
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] font-semibold text-amber-400">{recipe.category}</span>
+                          <span className="text-[11px] text-slate-400 flex items-center gap-1">
+                            <Clock className="w-3 h-3 text-amber-400" /> {recipe.cookTime}m • {recipe.calories || 0} kcal
                           </span>
-                          <span className="flex items-center gap-1">
-                            <Users className="w-3.5 h-3.5 text-amber-400" />
-                            {recipe.servings} serv
-                          </span>
-                          {recipe.calories > 0 && (
-                            <span className="flex items-center gap-1 font-medium text-slate-300">
-                              <Flame className="w-3.5 h-3.5 text-orange-400" />
-                              {recipe.calories} kcal
-                            </span>
-                          )}
                         </div>
-
-                        {/* Macro & Fiber Pills */}
-                        <div className="mt-3.5 pt-3 border-t border-slate-800/70 grid grid-cols-4 gap-1.5 text-center text-[10px] font-bold">
-                          <div className="bg-rose-500/10 text-rose-400 py-1 rounded-lg border border-rose-500/20">
-                            P: {recipe.protein || 0}g
-                          </div>
-                          <div className="bg-amber-500/10 text-amber-400 py-1 rounded-lg border border-amber-500/20">
-                            C: {recipe.carbs || 0}g
-                          </div>
-                          <div className="bg-emerald-500/10 text-emerald-400 py-1 rounded-lg border border-emerald-500/20">
-                            Fi: {recipe.fiber || 0}g
-                          </div>
-                          <div className="bg-blue-500/10 text-blue-400 py-1 rounded-lg border border-blue-500/20">
-                            F: {recipe.fats || 0}g
-                          </div>
-                        </div>
+                        <h3 className="font-bold text-base text-white mt-1 line-clamp-1">{recipe.title}</h3>
                       </div>
 
-                      {/* Card Footer Actions */}
-                      <div className="pt-4 mt-4 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
                         <button
                           onClick={() => openCookMode(recipe)}
-                          className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-200 font-semibold py-2 px-3 rounded-xl text-xs transition-all"
+                          className="flex-1 flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-100 font-semibold py-2 px-3 rounded-xl text-xs transition-colors"
                         >
                           <Play className="w-3.5 h-3.5 fill-current" />
-                          Cook Mode
+                          Cook
                         </button>
                         <button
                           onClick={() => openRecipeEdit(recipe)}
-                          className="p-2 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-xl transition-colors"
-                          title="Edit Recipe"
+                          className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl"
+                          title="Edit"
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => deleteRecipe(recipe.id)}
-                          className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-xl transition-colors"
-                          title="Delete Recipe"
+                          onClick={() => requestDeleteRecipe(recipe)}
+                          className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-xl"
+                          title="Delete"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -929,72 +866,69 @@ export default function App() {
         {activeTab === 'discovered' && (
           <div>
             {filteredDiscovered.length === 0 ? (
-              <div className="text-center py-16 bg-slate-900/40 rounded-3xl border border-dashed border-slate-800">
-                <Sparkles className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                <h3 className="text-lg font-bold text-slate-300">No dining discoveries logged</h3>
-                <p className="text-slate-500 text-sm mt-1">Save memorable restaurant dishes you want to try again or recreate!</p>
+              <div className="text-center py-14 px-4 bg-slate-900/50 rounded-2xl border border-slate-800/80">
+                <Sparkles className="w-10 h-10 text-slate-600 mx-auto mb-2.5" />
+                <h3 className="text-base font-bold text-slate-200">No dining discoveries yet</h3>
+                <p className="text-xs text-slate-500 mt-1">Tap Add Dish above to save restaurant favorites.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {filteredDiscovered.map((item) => (
-                  <div 
+                  <div
                     key={item.id}
-                    className="bg-slate-900/90 border border-slate-800/80 rounded-2xl overflow-hidden flex flex-col sm:flex-row transition-all hover:border-emerald-500/40"
+                    className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden flex flex-col sm:flex-row"
                   >
-                    <div className="sm:w-2/5 relative h-48 sm:h-auto bg-slate-800">
-                      <img 
-                        src={item.photo} 
+                    <div className="sm:w-2/5 relative h-44 sm:h-auto bg-slate-800">
+                      <img
+                        src={item.photo}
                         alt={item.dishName}
                         className="w-full h-full object-cover"
                         onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&q=80&w=800'; }}
                       />
                       {item.recreateAtHome && (
-                        <span className="absolute top-2.5 left-2.5 px-2.5 py-0.5 bg-emerald-500 text-slate-950 font-bold text-[10px] uppercase tracking-wider rounded-md shadow-md">
+                        <span className="absolute top-2.5 left-2.5 px-2 py-0.5 bg-emerald-500 text-slate-950 font-bold text-[10px] uppercase rounded-md">
                           To Recreate
                         </span>
                       )}
                     </div>
 
-                    <div className="p-5 sm:w-3/5 flex flex-col justify-between">
+                    <div className="p-4 sm:w-3/5 flex flex-col justify-between gap-3">
                       <div>
                         <div className="flex items-start justify-between gap-2">
-                          <h3 className="font-bold text-slate-100 text-base">{item.dishName}</h3>
-                          <span className="text-xs font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                          <h3 className="font-bold text-white text-sm sm:text-base">{item.dishName}</h3>
+                          <span className="text-xs font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md">
                             {item.priceTier}
                           </span>
                         </div>
-
                         <p className="text-xs text-slate-400 flex items-center gap-1 mt-1">
-                          <MapPin className="w-3 h-3 text-slate-500" />
-                          <span className="font-medium text-slate-300">{item.restaurant}</span> • {item.location}
+                          <MapPin className="w-3 h-3 text-slate-500 shrink-0" />
+                          <span className="truncate">{item.restaurant} • {item.location}</span>
                         </p>
-
                         <div className="flex items-center gap-1 mt-2">
                           {[...Array(5)].map((_, i) => (
-                            <Star 
-                              key={i} 
-                              className={`w-3.5 h-3.5 ${i < item.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-700'}`} 
+                            <Star
+                              key={i}
+                              className={`w-3.5 h-3.5 ${i < item.rating ? 'fill-amber-400 text-amber-400' : 'text-slate-700'}`}
                             />
                           ))}
                         </div>
-
                         {item.tastingNotes && (
-                          <p className="text-xs text-slate-300 mt-3 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/60 italic line-clamp-3">
+                          <p className="text-xs text-slate-300 mt-2.5 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/60 italic line-clamp-2">
                             "{item.tastingNotes}"
                           </p>
                         )}
                       </div>
 
-                      <div className="pt-3 mt-3 border-t border-slate-800/80 flex items-center justify-end gap-2">
+                      <div className="pt-2 border-t border-slate-800/80 flex items-center justify-end gap-2">
                         <button
                           onClick={() => openDiscoveredEdit(item)}
-                          className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded-lg transition-colors"
+                          className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg"
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => deleteDiscovered(item.id)}
-                          className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg transition-colors"
+                          onClick={() => requestDeleteDiscovered(item)}
+                          className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -1006,44 +940,57 @@ export default function App() {
             )}
           </div>
         )}
+
+        {/* QUIET BACKUP BAR AT BOTTOM */}
+        <div className="pt-4 border-t border-slate-900 flex items-center justify-between text-xs text-slate-500">
+          <span>Saved locally in your browser</span>
+          <div className="flex items-center gap-3">
+            <button onClick={handleExportBackup} className="flex items-center gap-1 hover:text-slate-300">
+              <Download className="w-3.5 h-3.5" /> Export
+            </button>
+            <label className="flex items-center gap-1 hover:text-slate-300 cursor-pointer">
+              <FolderUp className="w-3.5 h-3.5" /> Import
+              <input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
+            </label>
+          </div>
+        </div>
       </main>
 
-      {/* RECIPE MODAL (CREATE / EDIT) */}
+      {/* RECIPE MODAL */}
       {isRecipeModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-2xl my-8 overflow-hidden shadow-2xl">
-            <div className="p-6 border-b border-slate-800 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-slate-100">
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-white">
                 {editingRecipe ? 'Edit Recipe' : 'Add New Recipe'}
               </h2>
-              <button 
+              <button
                 onClick={() => setIsRecipeModalOpen(false)}
-                className="p-2 text-slate-400 hover:text-slate-200 rounded-full hover:bg-slate-800"
+                className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveRecipe} className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
-              
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <form onSubmit={handleSaveRecipe} className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Recipe Title</label>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Recipe Title</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Garlic Butter Shrimp Pasta"
                     value={recipeForm.title}
                     onChange={(e) => setRecipeForm({ ...recipeForm, title: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-amber-500"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Category</label>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Category</label>
                   <select
                     value={recipeForm.category}
                     onChange={(e) => setRecipeForm({ ...recipeForm, category: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-amber-500"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500"
                   >
                     {CATEGORIES.filter(c => c !== 'All' && c !== 'Favorites').map(c => (
                       <option key={c} value={c}>{c}</option>
@@ -1052,28 +999,28 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-950/60 p-4 rounded-2xl border border-slate-800/80">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800/80">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Created By</label>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Created By</label>
                   <input
                     type="text"
                     required
-                    placeholder="Author's Name"
+                    placeholder="Family member name"
                     value={recipeForm.author}
                     onChange={(e) => setRecipeForm({ ...recipeForm, author: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-amber-500"
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Card Theme Color</label>
-                  <div className="flex items-center gap-2 pt-1.5">
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Card Color</label>
+                  <div className="flex items-center gap-2 pt-1">
                     {COLOR_OPTIONS.map((color) => (
                       <button
                         key={color.value}
                         type="button"
                         onClick={() => setRecipeForm({ ...recipeForm, color: color.value })}
-                        className={`w-8 h-8 rounded-full border-2 transition-all ${
-                          recipeForm.color === color.value ? 'border-white scale-110 shadow-lg ring-2 ring-amber-500/50' : 'border-transparent opacity-70 hover:opacity-100'
+                        className={`w-7 h-7 rounded-full border-2 transition-all ${
+                          recipeForm.color === color.value ? 'border-white scale-110' : 'border-transparent opacity-70 hover:opacity-100'
                         }`}
                         style={{ backgroundColor: color.value }}
                         title={color.name}
@@ -1083,114 +1030,111 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Cook Time (m)</label>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Cook Time (m)</label>
                   <input
                     type="number"
                     min="1"
                     value={recipeForm.cookTime}
                     onChange={(e) => setRecipeForm({ ...recipeForm, cookTime: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-amber-500"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Servings</label>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Servings</label>
                   <input
                     type="number"
                     min="1"
                     value={recipeForm.servings}
                     onChange={(e) => setRecipeForm({ ...recipeForm, servings: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-amber-500"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Calories (kcal)</label>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Calories</label>
                   <input
                     type="number"
                     min="0"
                     value={recipeForm.calories}
                     onChange={(e) => setRecipeForm({ ...recipeForm, calories: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-amber-500"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white"
                   />
                 </div>
               </div>
 
-              {/* Automated Macros & Fiber Counter */}
-              <div className="bg-slate-950/70 p-4 rounded-2xl border border-slate-800/80">
-                <div className="flex items-center justify-between mb-3">
-                  <label className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-                    <Activity className="w-4 h-4" /> Macros & Fiber Counter
-                  </label>
-                  <span className="text-[11px] text-emerald-400 font-medium">Auto-updates from ingredients</span>
+              <div className="bg-slate-950/70 p-3.5 rounded-2xl border border-slate-800/80">
+                <div className="flex items-center justify-between mb-2.5">
+                  <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                    <Activity className="w-4 h-4" /> Macros & Fiber
+                  </span>
+                  <span className="text-[11px] text-emerald-400">Auto-calculated from ingredients</span>
                 </div>
-
                 <div className="grid grid-cols-4 gap-2">
                   <div>
-                    <label className="block text-[11px] font-semibold text-rose-400 mb-1">Protein (g)</label>
+                    <label className="block text-[11px] text-rose-400 mb-1">Protein (g)</label>
                     <input
                       type="number"
                       min="0"
                       value={recipeForm.protein}
                       onChange={(e) => setRecipeForm({ ...recipeForm, protein: e.target.value })}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-semibold text-amber-400 mb-1">Carbs (g)</label>
+                    <label className="block text-[11px] text-amber-400 mb-1">Carbs (g)</label>
                     <input
                       type="number"
                       min="0"
                       value={recipeForm.carbs}
                       onChange={(e) => setRecipeForm({ ...recipeForm, carbs: e.target.value })}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500"
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-semibold text-emerald-400 mb-1">Fiber (g)</label>
+                    <label className="block text-[11px] text-emerald-400 mb-1">Fiber (g)</label>
                     <input
                       type="number"
                       min="0"
                       value={recipeForm.fiber}
                       onChange={(e) => setRecipeForm({ ...recipeForm, fiber: e.target.value })}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-semibold text-blue-400 mb-1">Fats (g)</label>
+                    <label className="block text-[11px] text-blue-400 mb-1">Fats (g)</label>
                     <input
                       type="number"
                       min="0"
                       value={recipeForm.fats}
                       onChange={(e) => setRecipeForm({ ...recipeForm, fats: e.target.value })}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white"
                     />
                   </div>
                 </div>
               </div>
 
-              {/* Photo Upload */}
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Recipe Photo</label>
-                <div className="relative border-2 border-dashed border-slate-700/60 hover:border-teal-500/60 rounded-2xl p-5 transition-colors text-center bg-slate-950/40">
-                  <input 
-                    type="file" 
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Dish Photo</label>
+                <div className="relative border-2 border-dashed border-slate-700/70 hover:border-amber-500/60 rounded-2xl p-4 text-center bg-slate-950/40">
+                  <input
+                    type="file"
                     accept="image/*"
                     onChange={(e) => handleImageUpload(e, (base64) => setRecipeForm({ ...recipeForm, photo: base64 }))}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                   />
                   {recipeForm.photo ? (
-                    <div className="flex items-center justify-center gap-4">
-                      <img src={recipeForm.photo} alt="Preview" className="w-16 h-16 object-cover rounded-xl border border-slate-700" />
+                    <div className="flex items-center justify-center gap-3">
+                      <img src={recipeForm.photo} alt="Preview" className="w-14 h-14 object-cover rounded-xl border border-slate-700" />
                       <div className="text-left">
                         <p className="text-xs text-emerald-400 font-semibold flex items-center gap-1">
-                          <Check className="w-4 h-4" /> Compressed & ready
+                          <Check className="w-4 h-4" /> Photo ready
                         </p>
-                        <p className="text-[11px] text-slate-500 mt-1">Tap to replace photo</p>
+                        <p className="text-[11px] text-slate-500">Tap to replace</p>
                       </div>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-center gap-2 text-teal-500 font-medium text-sm">
+                    <div className="flex items-center justify-center gap-2 text-amber-400 text-xs font-semibold">
                       <Upload className="w-4 h-4" />
                       <span>Upload Dish Image</span>
                     </div>
@@ -1198,41 +1142,39 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Ingredients */}
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Ingredients (One per line with grams/amounts)</label>
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Ingredients (One per line)</label>
                 <textarea
                   rows="4"
                   placeholder="200g chicken breast&#10;150g white rice&#10;100g broccoli"
                   value={recipeForm.ingredientsText}
                   onChange={(e) => handleIngredientsChange(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-100 focus:outline-none focus:border-amber-500 font-mono text-xs"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
                 />
               </div>
 
-              {/* Instructions */}
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Cooking Steps (One per line)</label>
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Instructions (One step per line)</label>
                 <textarea
                   rows="4"
                   placeholder="Prep ingredients&#10;Heat pan over medium heat..."
                   value={recipeForm.instructionsText}
                   onChange={(e) => setRecipeForm({ ...recipeForm, instructionsText: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-100 focus:outline-none focus:border-amber-500 font-mono text-xs"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white font-mono focus:outline-none focus:border-amber-500"
                 />
               </div>
 
-              <div className="pt-4 flex justify-end gap-3">
+              <div className="pt-2 flex justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setIsRecipeModalOpen(false)}
-                  className="px-5 py-2.5 rounded-xl border border-slate-800 text-slate-400 hover:text-slate-200 text-sm font-semibold"
+                  className="px-4 py-2.5 rounded-xl border border-slate-800 text-slate-400 hover:text-white text-xs font-semibold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 text-sm font-bold shadow-lg shadow-amber-500/20"
+                  className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold"
                 >
                   Save Recipe
                 </button>
@@ -1246,106 +1188,106 @@ export default function App() {
       {isDiscoveredModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-xl my-8 overflow-hidden shadow-2xl">
-            <div className="p-6 border-b border-slate-800 flex items-center justify-between">
-              <h2 className="text-xl font-bold text-slate-100">
-                {editingDiscovered ? 'Edit Dining Experience' : 'Log Discovered Dish'}
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-white">
+                {editingDiscovered ? 'Edit Dining Entry' : 'Log Discovered Dish'}
               </h2>
-              <button 
+              <button
                 onClick={() => setIsDiscoveredModalOpen(false)}
-                className="p-2 text-slate-400 hover:text-slate-200 rounded-full hover:bg-slate-800"
+                className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveDiscovered} className="p-6 space-y-5">
+            <form onSubmit={handleSaveDiscovered} className="p-5 space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Dish Name</label>
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Dish Name</label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Crispy Duck Confit"
                   value={discoveredForm.dishName}
                   onChange={(e) => setDiscoveredForm({ ...discoveredForm, dishName: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Restaurant</label>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Restaurant</label>
                   <input
                     type="text"
                     required
                     placeholder="e.g. Bistro Central"
                     value={discoveredForm.restaurant}
                     onChange={(e) => setDiscoveredForm({ ...discoveredForm, restaurant: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-white"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Location / City</label>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Location</label>
                   <input
                     type="text"
                     placeholder="e.g. Downtown"
                     value={discoveredForm.location}
                     onChange={(e) => setDiscoveredForm({ ...discoveredForm, location: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-white"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Rating (1-5)</label>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Rating</label>
                   <select
                     value={discoveredForm.rating}
                     onChange={(e) => setDiscoveredForm({ ...discoveredForm, rating: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white"
                   >
-                    <option value={5}>5 Stars (Exceptional)</option>
-                    <option value={4}>4 Stars (Great)</option>
-                    <option value={3}>3 Stars (Average)</option>
-                    <option value={2}>2 Stars (Below Avg)</option>
-                    <option value={1}>1 Star (Poor)</option>
+                    <option value={5}>5 Stars</option>
+                    <option value={4}>4 Stars</option>
+                    <option value={3}>3 Stars</option>
+                    <option value={2}>2 Stars</option>
+                    <option value={1}>1 Star</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Price Tier</label>
+                  <label className="block text-xs font-semibold text-slate-400 mb-1.5">Price</label>
                   <select
                     value={discoveredForm.priceTier}
                     onChange={(e) => setDiscoveredForm({ ...discoveredForm, priceTier: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white"
                   >
-                    <option value="$">$ (Inexpensive)</option>
-                    <option value="$$">$$ (Moderate)</option>
-                    <option value="$$$">$$$ (Expensive)</option>
-                    <option value="$$$$">$$$$ (Fine Dining)</option>
+                    <option value="$">$</option>
+                    <option value="$$">$$</option>
+                    <option value="$$$">$$$</option>
+                    <option value="$$$$">$$$$</option>
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Dish Photo</label>
-                <div className="relative border-2 border-dashed border-slate-700/60 hover:border-teal-500/60 rounded-2xl p-5 transition-colors text-center bg-slate-950/40">
-                  <input 
-                    type="file" 
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Dish Photo</label>
+                <div className="relative border-2 border-dashed border-slate-700/70 hover:border-emerald-500/60 rounded-2xl p-4 text-center bg-slate-950/40">
+                  <input
+                    type="file"
                     accept="image/*"
                     onChange={(e) => handleImageUpload(e, (base64) => setDiscoveredForm({ ...discoveredForm, photo: base64 }))}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                   />
                   {discoveredForm.photo ? (
-                    <div className="flex items-center justify-center gap-4">
-                      <img src={discoveredForm.photo} alt="Preview" className="w-16 h-16 object-cover rounded-xl border border-slate-700" />
+                    <div className="flex items-center justify-center gap-3">
+                      <img src={discoveredForm.photo} alt="Preview" className="w-14 h-14 object-cover rounded-xl border border-slate-700" />
                       <div className="text-left">
                         <p className="text-xs text-emerald-400 font-semibold flex items-center gap-1">
-                          <Check className="w-4 h-4" /> Photo compressed & ready
+                          <Check className="w-4 h-4" /> Photo ready
                         </p>
-                        <p className="text-[11px] text-slate-500 mt-1">Tap to select another picture</p>
+                        <p className="text-[11px] text-slate-500">Tap to replace</p>
                       </div>
                     </div>
                   ) : (
-                    <div className="flex items-center justify-center gap-2 text-teal-500 font-medium text-sm">
+                    <div className="flex items-center justify-center gap-2 text-emerald-400 text-xs font-semibold">
                       <Upload className="w-4 h-4" />
                       <span>Upload Dish Image</span>
                     </div>
@@ -1354,40 +1296,37 @@ export default function App() {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Tasting & Flavor Notes</label>
+                <label className="block text-xs font-semibold text-slate-400 mb-1.5">Tasting Notes</label>
                 <textarea
                   rows="3"
-                  placeholder="Describe flavors, secret spices, presentation..."
+                  placeholder="Describe flavors, texture, or highlights..."
                   value={discoveredForm.tastingNotes}
                   onChange={(e) => setDiscoveredForm({ ...discoveredForm, tastingNotes: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white"
                 />
               </div>
 
-              <div className="flex items-center gap-3 pt-1">
+              <label className="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer">
                 <input
                   type="checkbox"
-                  id="recreateToggle"
                   checked={discoveredForm.recreateAtHome}
                   onChange={(e) => setDiscoveredForm({ ...discoveredForm, recreateAtHome: e.target.checked })}
-                  className="w-4 h-4 accent-emerald-500 rounded cursor-pointer"
+                  className="w-4 h-4 accent-emerald-500 rounded"
                 />
-                <label htmlFor="recreateToggle" className="text-sm font-medium text-slate-300 cursor-pointer">
-                  Mark as "Want to recreate at home"
-                </label>
-              </div>
+                <span>Want to recreate at home</span>
+              </label>
 
-              <div className="pt-4 flex justify-end gap-3">
+              <div className="pt-2 flex justify-end gap-2.5">
                 <button
                   type="button"
                   onClick={() => setIsDiscoveredModalOpen(false)}
-                  className="px-5 py-2.5 rounded-xl border border-slate-800 text-slate-400 hover:text-slate-200 text-sm font-semibold"
+                  className="px-4 py-2.5 rounded-xl border border-slate-800 text-slate-400 hover:text-white text-xs font-semibold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 text-sm font-bold shadow-lg shadow-emerald-500/20"
+                  className="px-5 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-bold"
                 >
                   Save Entry
                 </button>
@@ -1397,108 +1336,134 @@ export default function App() {
         </div>
       )}
 
-      {/* INTERACTIVE COOKING MODE MODAL WITH SERVING SCALER */}
+      {/* IN-APP DELETE CONFIRMATION MODAL */}
+      {pendingDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-sm p-6 shadow-2xl space-y-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2.5 rounded-2xl bg-rose-500/15 text-rose-400 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Delete {pendingDelete.type === 'recipe' ? 'Recipe' : 'Discovery'}?</h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Remove <span className="text-slate-200 font-semibold">"{pendingDelete.name}"</span>? This cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setPendingDelete(null)}
+                className="px-4 py-2 rounded-xl border border-slate-800 text-slate-300 hover:text-white text-xs font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                className="px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-400 text-white text-xs font-bold"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* COOK MODE MODAL */}
       {activeCookModeRecipe && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-3xl my-8 overflow-hidden shadow-2xl">
-            
-            <div className="p-6 border-b border-slate-800 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-500/10 rounded-xl text-amber-400">
-                  <Play className="w-5 h-5 fill-current" />
-                </div>
-                <div>
-                  <h2 className="text-xl font-bold text-slate-100">{activeCookModeRecipe.title}</h2>
-                  <p className="text-xs text-slate-400">
-                    Chef <span className="text-amber-400 font-semibold">{activeCookModeRecipe.author || 'Family Member'}</span>
-                  </p>
-                </div>
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-white">{activeCookModeRecipe.title}</h2>
+                <p className="text-xs text-slate-400">
+                  Chef <span className="text-amber-400 font-semibold">{activeCookModeRecipe.author || 'Family Member'}</span>
+                </p>
               </div>
-              <button 
+              <button
                 onClick={() => setActiveCookModeRecipe(null)}
-                className="p-2 text-slate-400 hover:text-slate-200 rounded-full hover:bg-slate-800"
+                className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
-              
-              {/* Scaled Macros & Serving Adjuster */}
-              <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                    <Users className="w-4 h-4 text-amber-400" /> Serving Scaler
+            <div className="p-5 space-y-5 max-h-[80vh] overflow-y-auto">
+              <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                  <span className="text-xs font-bold text-slate-400 flex items-center gap-1.5">
+                    <Users className="w-4 h-4 text-amber-400" /> Servings
                   </span>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => setCookServings(prev => Math.max(1, prev - 1))}
-                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-sm"
+                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm"
                     >
                       -
                     </button>
-                    <span className="text-sm font-bold text-amber-400 min-w-[4.5rem] text-center">
+                    <span className="text-xs font-bold text-amber-400 min-w-[4rem] text-center">
                       {cookServings} {cookServings === 1 ? 'serving' : 'servings'}
                     </span>
                     <button
                       onClick={() => setCookServings(prev => prev + 1)}
-                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-sm"
+                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm"
                     >
                       +
                     </button>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-5 gap-1 text-center items-center">
+                <div className="grid grid-cols-5 gap-1 text-center">
                   <div>
                     <div className="text-[10px] font-bold text-slate-400 uppercase">Cals</div>
-                    <div className="text-sm sm:text-base font-extrabold text-amber-400">
+                    <div className="text-sm font-extrabold text-amber-400">
                       {Math.round((activeCookModeRecipe.calories || 0) * servingRatio)}
                     </div>
                   </div>
                   <div>
                     <div className="text-[10px] font-bold text-slate-400 uppercase">Protein</div>
-                    <div className="text-sm sm:text-base font-extrabold text-rose-400">
+                    <div className="text-sm font-extrabold text-rose-400">
                       {Math.round((activeCookModeRecipe.protein || 0) * servingRatio)}g
                     </div>
                   </div>
                   <div>
                     <div className="text-[10px] font-bold text-slate-400 uppercase">Carbs</div>
-                    <div className="text-sm sm:text-base font-extrabold text-amber-400">
+                    <div className="text-sm font-extrabold text-amber-400">
                       {Math.round((activeCookModeRecipe.carbs || 0) * servingRatio)}g
                     </div>
                   </div>
                   <div>
                     <div className="text-[10px] font-bold text-slate-400 uppercase">Fiber</div>
-                    <div className="text-sm sm:text-base font-extrabold text-emerald-400">
+                    <div className="text-sm font-extrabold text-emerald-400">
                       {Math.round((activeCookModeRecipe.fiber || 0) * servingRatio)}g
                     </div>
                   </div>
                   <div>
                     <div className="text-[10px] font-bold text-slate-400 uppercase">Fats</div>
-                    <div className="text-sm sm:text-base font-extrabold text-blue-400">
+                    <div className="text-sm font-extrabold text-blue-400">
                       {Math.round((activeCookModeRecipe.fats || 0) * servingRatio)}g
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Kitchen Timer */}
-              <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800 flex items-center justify-between gap-4">
                 <div>
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                  <h4 className="text-xs font-bold uppercase text-amber-400 flex items-center gap-1.5">
                     <Clock className="w-4 h-4" /> Kitchen Timer
                   </h4>
-                  <div className="text-3xl font-mono font-bold text-slate-100 mt-1">
+                  <div className="text-2xl font-mono font-bold text-white mt-0.5">
                     {formatTimer(timerSeconds)}
                   </div>
                 </div>
-
                 <div className="flex items-center gap-2">
                   {!isTimerRunning ? (
                     <button
                       onClick={() => startTimer(activeCookModeRecipe.cookTime || 10)}
-                      className="flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-4 py-2 rounded-xl text-xs"
+                      className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs"
                     >
                       <Play className="w-3.5 h-3.5 fill-current" />
                       Start ({activeCookModeRecipe.cookTime || 10}m)
@@ -1506,7 +1471,7 @@ export default function App() {
                   ) : (
                     <button
                       onClick={() => setIsTimerRunning(false)}
-                      className="flex items-center gap-2 bg-rose-500 hover:bg-rose-400 text-slate-950 font-bold px-4 py-2 rounded-xl text-xs"
+                      className="flex items-center gap-1.5 bg-rose-500 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs"
                     >
                       <Pause className="w-3.5 h-3.5" />
                       Pause
@@ -1521,26 +1486,24 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Ingredients Checklist & Steps */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <div>
-                  <h3 className="text-sm font-bold text-slate-200 mb-3 flex items-center gap-2">
-                    <Bookmark className="w-4 h-4 text-amber-400" />
-                    Ingredients Checklist
+                  <h3 className="text-xs font-bold uppercase text-slate-400 mb-2.5 flex items-center gap-1.5">
+                    <Bookmark className="w-4 h-4 text-amber-400" /> Ingredients
                   </h3>
-                  <div className="space-y-2.5 bg-slate-950/50 p-4 rounded-2xl border border-slate-800/80">
-                    {activeCookModeRecipe.ingredients && activeCookModeRecipe.ingredients.length > 0 ? (
+                  <div className="space-y-2 bg-slate-950/50 p-3.5 rounded-2xl border border-slate-800/80">
+                    {activeCookModeRecipe.ingredients?.length > 0 ? (
                       activeCookModeRecipe.ingredients.map((ing, idx) => {
                         const isChecked = Boolean(checkedIngredients[idx]);
                         return (
-                          <label key={idx} className="flex items-center gap-3 text-xs cursor-pointer group">
+                          <label key={idx} className="flex items-center gap-2.5 text-xs cursor-pointer">
                             <input
                               type="checkbox"
                               checked={isChecked}
                               onChange={() => setCheckedIngredients(prev => ({ ...prev, [idx]: !prev[idx] }))}
-                              className="w-4 h-4 rounded accent-amber-500 bg-slate-900 border-slate-700"
+                              className="w-4 h-4 rounded accent-amber-500"
                             />
-                            <span className={isChecked ? 'line-through text-slate-500' : 'text-slate-200 group-hover:text-white'}>
+                            <span className={isChecked ? 'line-through text-slate-500' : 'text-slate-200'}>
                               {scaleIngredientLine(ing, servingRatio)}
                             </span>
                           </label>
@@ -1553,18 +1516,17 @@ export default function App() {
                 </div>
 
                 <div>
-                  <h3 className="text-sm font-bold text-slate-200 mb-3 flex items-center gap-2">
-                    <Utensils className="w-4 h-4 text-amber-400" />
-                    Cooking Steps
+                  <h3 className="text-xs font-bold uppercase text-slate-400 mb-2.5 flex items-center gap-1.5">
+                    <Utensils className="w-4 h-4 text-amber-400" /> Steps
                   </h3>
-                  <div className="space-y-3">
-                    {activeCookModeRecipe.instructions && activeCookModeRecipe.instructions.length > 0 ? (
+                  <div className="space-y-2.5">
+                    {activeCookModeRecipe.instructions?.length > 0 ? (
                       activeCookModeRecipe.instructions.map((step, idx) => (
-                        <div key={idx} className="bg-slate-950/50 p-3.5 rounded-2xl border border-slate-800/80 flex gap-3 text-xs text-slate-300">
+                        <div key={idx} className="bg-slate-950/50 p-3 rounded-2xl border border-slate-800/80 flex gap-2.5 text-xs text-slate-300">
                           <span className="w-5 h-5 rounded-full bg-amber-500/15 text-amber-400 font-bold flex items-center justify-center shrink-0">
                             {idx + 1}
                           </span>
-                          <p className="leading-relaxed">{step}</p>
+                          <span>{step}</span>
                         </div>
                       ))
                     ) : (
@@ -1578,33 +1540,28 @@ export default function App() {
             <div className="p-4 border-t border-slate-800 flex justify-end">
               <button
                 onClick={() => setActiveCookModeRecipe(null)}
-                className="px-6 py-2 rounded-xl bg-slate-800 text-slate-200 text-xs font-bold hover:bg-slate-700"
+                className="px-5 py-2 rounded-xl bg-slate-800 text-slate-200 text-xs font-bold hover:bg-slate-700"
               >
-                Done Cooking
+                Done
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* SAVE / STATUS TOAST NOTIFICATION */}
+      {/* CONFIRMATION TOAST */}
       {toast && (
         <div
-          className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 font-bold px-5 py-3.5 rounded-2xl shadow-2xl transition-all ${
+          className={`fixed bottom-5 right-5 z-50 flex items-center gap-2 font-bold px-4 py-3 rounded-2xl shadow-xl text-xs sm:text-sm ${
             toast.type === 'error'
-              ? 'bg-rose-500 text-white shadow-rose-500/30'
-              : 'bg-emerald-500 text-slate-950 shadow-emerald-500/30'
+              ? 'bg-rose-500 text-white'
+              : 'bg-emerald-500 text-slate-950'
           }`}
         >
-          {toast.type === 'error' ? (
-            <AlertCircle className="w-5 h-5 stroke-[2.5]" />
-          ) : (
-            <CheckCircle2 className="w-5 h-5 stroke-[2.5]" />
-          )}
-          <span className="text-sm">{toast.message}</span>
+          {toast.type === 'error' ? <AlertCircle className="w-4 h-4" /> : <CheckCircle2 className="w-4 h-4" />}
+          <span>{toast.message}</span>
         </div>
       )}
-
     </div>
   );
 }
