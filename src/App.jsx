@@ -1,14 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
   getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, serverTimestamp 
 } from 'firebase/firestore';
 import { 
   Utensils, Plus, Search, Trash2, Edit3, Heart, Clock, Users, Play, Pause, RotateCcw, 
-  MapPin, Star, Sparkles, X, Upload, Flame, Check, Bookmark, ChefHat, User, Activity
+  MapPin, Star, Sparkles, X, Upload, Flame, Check, Bookmark, ChefHat, User, Activity,
+  Download, FolderUp, CheckCircle2, AlertCircle
 } from 'lucide-react';
 
-// Firebase configuration placeholder - falls back to local storage if offline
+// Firebase configuration - falls back gracefully to local storage when offline or in demo mode
 const firebaseConfig = {
   apiKey: "AIzaSyDemoKeyForTastyLogStorageSync123",
   authDomain: "tastylog-app.firebaseapp.com",
@@ -23,20 +24,21 @@ try {
   const app = initializeApp(firebaseConfig);
   db = getFirestore(app);
 } catch (e) {
-  console.warn("Firebase initialized in demo/fallback mode.");
+  console.warn("Firebase initialized in offline/local mode.");
 }
 
-// Color options for family members to choose from
 const COLOR_OPTIONS = [
   { name: 'Amber Gold', value: '#f59e0b' },
   { name: 'Emerald Green', value: '#10b981' },
-  { name: 'Blue', value: '#3b82f6' },
-  { name: 'Purple', value: '#8b5cf6' },
-  { name: 'Rose Red', value: '#f43f5e' },
-  { name: 'Teal', value: '#14b8a6' },
+  { name: 'Ocean Blue', value: '#3b82f6' },
+  { name: 'Royal Purple', value: '#8b5cf6' },
+  { name: 'Rose Crimson', value: '#f43f5e' },
+  { name: 'Teal Mint', value: '#14b8a6' },
 ];
 
-// Helper: Advanced Automated Calorie & Macro Calculator from Ingredients
+const CATEGORIES = ['All', 'Favorites', 'Italian', 'Japanese', 'Dinner', 'Breakfast', 'Dessert', 'Snack'];
+
+// Automated Calorie, Macro & Fiber Calculator from Ingredient Lines
 const calculateNutritionFromIngredients = (ingredientsText) => {
   const lines = ingredientsText.toLowerCase().split('\n');
   let totalCals = 0;
@@ -45,41 +47,33 @@ const calculateNutritionFromIngredients = (ingredientsText) => {
   let totalFats = 0;
   let totalFiber = 0;
 
-  lines.forEach(line => {
+  lines.forEach((line) => {
     if (!line.trim()) return;
 
-    // Extract numbers (e.g., "200g", "1.5 cups", "2 tbsp", "100")
     const matchNum = line.match(/(\d+(\.\d+)?)/);
     const amount = matchNum ? parseFloat(matchNum[0]) : 1;
-    
-    // Detect unit scale (grams vs cups/tbsp/pieces)
+
     let multiplier = amount;
     if (line.includes('kg')) multiplier = amount * 1000;
     else if (line.includes('oz')) multiplier = amount * 28.35;
     else if (line.includes('cup') || line.includes('cups')) multiplier = amount * 150;
-    else if (line.includes('tbsp') || line.includes('tbsp.')) multiplier = amount * 15;
+    else if (line.includes('tbsp')) multiplier = amount * 15;
     else if (line.includes('tsp')) multiplier = amount * 5;
     else if (!line.includes('g') && !line.includes('gram')) {
-      // If no unit is specified, treat number as grams or count factor
       multiplier = amount < 10 ? amount * 100 : amount;
     }
 
-    // Food Database Mapping per 100g / standard factor
-    let calsPer100 = 100;
-    let pPer100 = 5;
-    let cPer100 = 15;
-    let fPer100 = 3;
-    let fiPer100 = 1;
+    let calsPer100 = 100, pPer100 = 5, cPer100 = 15, fPer100 = 3, fiPer100 = 1;
 
     if (line.includes('chicken') || line.includes('turkey')) {
       calsPer100 = 165; pPer100 = 31; cPer100 = 0; fPer100 = 3.6; fiPer100 = 0;
-    } else if (line.includes('salmon') || line.includes('fish')) {
+    } else if (line.includes('salmon') || line.includes('fish') || line.includes('tuna')) {
       calsPer100 = 206; pPer100 = 22; cPer100 = 0; fPer100 = 12; fiPer100 = 0;
     } else if (line.includes('beef') || line.includes('steak') || line.includes('pork')) {
       calsPer100 = 250; pPer100 = 26; cPer100 = 0; fPer100 = 15; fiPer100 = 0;
     } else if (line.includes('shrimp') || line.includes('prawn')) {
       calsPer100 = 99; pPer100 = 24; cPer100 = 0.2; fPer100 = 0.3; fiPer100 = 0;
-    } else if (line.includes('egg') || line.includes('eggs')) {
+    } else if (line.includes('egg')) {
       calsPer100 = 155; pPer100 = 13; cPer100 = 1.1; fPer100 = 11; fiPer100 = 0;
     } else if (line.includes('rice') || line.includes('pasta') || line.includes('noodle')) {
       calsPer100 = 130; pPer100 = 2.7; cPer100 = 28; fPer100 = 0.3; fiPer100 = 0.4;
@@ -95,7 +89,7 @@ const calculateNutritionFromIngredients = (ingredientsText) => {
       calsPer100 = 402; pPer100 = 25; cPer100 = 1.3; fPer100 = 33; fiPer100 = 0;
     } else if (line.includes('avocado')) {
       calsPer100 = 160; pPer100 = 2; cPer100 = 8.5; fPer100 = 14.7; fiPer100 = 6.7;
-    } else if (line.includes('broccoli') || line.includes('spinach') || line.includes('salad') || line.includes('veggie')) {
+    } else if (line.includes('broccoli') || line.includes('spinach') || line.includes('salad') || line.includes('veggie') || line.includes('mushroom')) {
       calsPer100 = 34; pPer100 = 2.8; cPer100 = 7; fPer100 = 0.4; fiPer100 = 3.3;
     } else if (line.includes('beans') || line.includes('edamame') || line.includes('lentils')) {
       calsPer100 = 120; pPer100 = 9; cPer100 = 22; fPer100 = 1.5; fiPer100 = 6;
@@ -116,11 +110,19 @@ const calculateNutritionFromIngredients = (ingredientsText) => {
     protein: Math.round(totalProtein) || 20,
     carbs: Math.round(totalCarbs) || 35,
     fats: Math.round(totalFats) || 12,
-    fiber: Math.round(totalFiber) || 4
+    fiber: Math.round(totalFiber) || 4,
   };
 };
 
-// Sample Initial Recipes with Macros & Fiber
+// Helper: Scale ingredient text numbers when adjusting servings in Cook Mode
+const scaleIngredientLine = (line, ratio) => {
+  if (ratio === 1) return line;
+  return line.replace(/^(\d+(\.\d+)?)/, (match) => {
+    const scaled = parseFloat(match) * ratio;
+    return Number.isInteger(scaled) ? scaled.toString() : scaled.toFixed(1);
+  });
+};
+
 const INITIAL_RECIPES = [
   {
     id: 'rec_1',
@@ -142,8 +144,8 @@ const INITIAL_RECIPES = [
       '4 cups Warm vegetable broth',
       '200g Mixed wild mushrooms, sliced',
       '2 tbsp Truffle oil',
-      '1/2 cup Shallots, finely diced',
-      '1/2 cup Grated Parmesan'
+      '0.5 cup Shallots, finely diced',
+      '0.5 cup Grated Parmesan'
     ],
     instructions: [
       'Sauté shallots and mushrooms in olive oil until golden.',
@@ -183,7 +185,6 @@ const INITIAL_RECIPES = [
   }
 ];
 
-// Sample Discovered Food Items
 const INITIAL_DISCOVERED = [
   {
     id: 'disc_1',
@@ -200,29 +201,33 @@ const INITIAL_DISCOVERED = [
 ];
 
 export default function App() {
-  // Navigation & View Mode
+  // Navigation & Filtering State
   const [activeTab, setActiveTab] = useState('recipes');
   const [recipes, setRecipes] = useState([]);
   const [discoveredFoods, setDiscoveredFoods] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
-  
-  // Modals
+  const [selectedAuthor, setSelectedAuthor] = useState('All');
+
+  // Modals & UI Feedback State
   const [isRecipeModalOpen, setIsRecipeModalOpen] = useState(false);
   const [isDiscoveredModalOpen, setIsDiscoveredModalOpen] = useState(false);
   const [editingRecipe, setEditingRecipe] = useState(null);
   const [editingDiscovered, setEditingDiscovered] = useState(null);
   const [activeCookModeRecipe, setActiveCookModeRecipe] = useState(null);
+  const [cookServings, setCookServings] = useState(1);
+  const [checkedIngredients, setCheckedIngredients] = useState({});
+  const [toast, setToast] = useState(null); // { message: string, type: 'success' | 'error' }
 
-  // App Title editing
+  // Editable App Branding
   const [appTitle, setAppTitle] = useState('TastyLog');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
 
-  // Cooking Timer state
+  // Cooking Timer
   const [timerSeconds, setTimerSeconds] = useState(0);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
 
-  // Form States - Recipe
+  // Recipe Form State
   const [recipeForm, setRecipeForm] = useState({
     title: '',
     category: 'Dinner',
@@ -240,7 +245,7 @@ export default function App() {
     instructionsText: ''
   });
 
-  // Form States - Discovered Food
+  // Discovered Form State
   const [discoveredForm, setDiscoveredForm] = useState({
     restaurant: '',
     location: '',
@@ -252,7 +257,11 @@ export default function App() {
     photo: ''
   });
 
-  // Reset Helpers
+  const showToast = useCallback((message, type = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3200);
+  }, []);
+
   const resetRecipeForm = () => {
     setRecipeForm({
       title: '',
@@ -294,13 +303,13 @@ export default function App() {
     if (savedTitle) setAppTitle(savedTitle);
 
     if (savedRecipes) {
-      try { setRecipes(JSON.parse(savedRecipes)); } catch(e) { setRecipes(INITIAL_RECIPES); }
+      try { setRecipes(JSON.parse(savedRecipes)); } catch { setRecipes(INITIAL_RECIPES); }
     } else {
       setRecipes(INITIAL_RECIPES);
     }
 
     if (savedDiscovered) {
-      try { setDiscoveredFoods(JSON.parse(savedDiscovered)); } catch(e) { setDiscoveredFoods(INITIAL_DISCOVERED); }
+      try { setDiscoveredFoods(JSON.parse(savedDiscovered)); } catch { setDiscoveredFoods(INITIAL_DISCOVERED); }
     } else {
       setDiscoveredFoods(INITIAL_DISCOVERED);
     }
@@ -310,32 +319,100 @@ export default function App() {
         const qRecipes = query(collection(db, 'recipes'), orderBy('createdAt', 'desc'));
         const unsubscribeRecipes = onSnapshot(qRecipes, (snapshot) => {
           if (!snapshot.empty) {
-            const fbData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            const fbData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
             setRecipes(fbData);
           }
-        }, err => console.log('Firebase fallback active'));
+        }, () => console.log('Firebase offline mode active'));
 
         return () => unsubscribeRecipes && unsubscribeRecipes();
-      } catch (e) {
-        console.log("Firebase listener error");
+      } catch {
+        console.log("Firebase listener unavailable");
       }
     }
   }, []);
 
-  // Save to LocalStorage on changes
+  // Safe LocalStorage Persistence
   useEffect(() => {
-    localStorage.setItem('tastylog_recipes', JSON.stringify(recipes));
+    try {
+      localStorage.setItem('tastylog_recipes', JSON.stringify(recipes));
+    } catch {
+      console.warn("LocalStorage quota limit reached for recipes.");
+    }
   }, [recipes]);
 
   useEffect(() => {
-    localStorage.setItem('tastylog_discovered', JSON.stringify(discoveredFoods));
+    try {
+      localStorage.setItem('tastylog_discovered', JSON.stringify(discoveredFoods));
+    } catch {
+      console.warn("LocalStorage quota limit reached for discoveries.");
+    }
   }, [discoveredFoods]);
 
   useEffect(() => {
-    localStorage.setItem('tastylog_title', appTitle);
+    try {
+      localStorage.setItem('tastylog_title', appTitle);
+    } catch {
+      console.warn("LocalStorage quota limit reached for title.");
+    }
   }, [appTitle]);
 
-  // Fully Automated Calculation on Ingredient Input Changes
+  // Keyboard Escape handler to close active modals cleanly
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setIsRecipeModalOpen(false);
+        setIsDiscoveredModalOpen(false);
+        setActiveCookModeRecipe(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Cooking Timer
+  useEffect(() => {
+    let interval = null;
+    if (isTimerRunning && timerSeconds > 0) {
+      interval = setInterval(() => setTimerSeconds(prev => prev - 1), 1000);
+    } else if (timerSeconds === 0) {
+      setIsTimerRunning(false);
+    }
+    return () => clearInterval(interval);
+  }, [isTimerRunning, timerSeconds]);
+
+  // Image Compression & Resize Helper (Prevents large photo upload failures)
+  const handleImageUpload = (e, callback) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 800;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > MAX_WIDTH) {
+          height = Math.round((height * MAX_WIDTH) / width);
+          width = MAX_WIDTH;
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.72);
+        callback(compressedBase64);
+      };
+      img.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Auto-calculate Calories, Macros & Fiber when ingredients change
   const handleIngredientsChange = (text) => {
     const nutrition = calculateNutritionFromIngredients(text);
     setRecipeForm(prev => ({
@@ -349,37 +426,45 @@ export default function App() {
     }));
   };
 
-  // Cooking Timer logic
-  useEffect(() => {
-    let interval = null;
-    if (isTimerRunning && timerSeconds > 0) {
-      interval = setInterval(() => setTimerSeconds(prev => prev - 1), 1000);
-    } else if (timerSeconds === 0) {
-      setIsTimerRunning(false);
-    }
-    return () => clearInterval(interval);
-  }, [isTimerRunning, timerSeconds]);
-
-  // Helper: Image File Upload to Base64
-  const handleImageUpload = (e, callback) => {
-    const file = e.target.files[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        callback(reader.result);
-      };
-      reader.readAsDataURL(file);
-    }
+  // Export & Import JSON Backup
+  const handleExportBackup = () => {
+    const dataStr = JSON.stringify({ appTitle, recipes, discoveredFoods, exportedAt: new Date().toISOString() }, null, 2);
+    const blob = new Blob([dataStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${appTitle.toLowerCase().replace(/\s+/g, '-')}-backup.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('Family recipe backup downloaded!');
   };
 
-  // Recipe Form Submission
+  const handleImportBackup = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        if (Array.isArray(parsed.recipes)) setRecipes(parsed.recipes);
+        if (Array.isArray(parsed.discoveredFoods)) setDiscoveredFoods(parsed.discoveredFoods);
+        if (parsed.appTitle) setAppTitle(parsed.appTitle);
+        showToast('Backup restored successfully!');
+      } catch {
+        showToast('Invalid backup file format.', 'error');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  // Save Recipe
   const handleSaveRecipe = async (e) => {
     e.preventDefault();
     const ingredients = recipeForm.ingredientsText.split('\n').filter(i => i.trim() !== '');
     const instructions = recipeForm.instructionsText.split('\n').filter(i => i.trim() !== '');
 
     const newRecipeData = {
-      title: recipeForm.title || 'Untitled Dish',
+      title: recipeForm.title.trim() || 'Untitled Dish',
       category: recipeForm.category,
       cookTime: Number(recipeForm.cookTime) || 15,
       servings: Number(recipeForm.servings) || 1,
@@ -388,7 +473,7 @@ export default function App() {
       carbs: Number(recipeForm.carbs) || 0,
       fats: Number(recipeForm.fats) || 0,
       fiber: Number(recipeForm.fiber) || 0,
-      author: recipeForm.author || 'Family Member',
+      author: recipeForm.author.trim() || 'Family Member',
       color: recipeForm.color || '#f59e0b',
       photo: recipeForm.photo || 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&q=80&w=800',
       ingredients,
@@ -397,23 +482,25 @@ export default function App() {
       updatedAt: new Date().toISOString()
     };
 
+    const wasEditing = Boolean(editingRecipe);
+
     if (editingRecipe) {
-      setRecipes(recipes.map(r => r.id === editingRecipe.id ? { ...newRecipeData, id: editingRecipe.id } : r));
+      setRecipes(prev => prev.map(r => r.id === editingRecipe.id ? { ...newRecipeData, id: editingRecipe.id } : r));
       if (db) {
-        try { await updateDoc(doc(db, 'recipes', editingRecipe.id), newRecipeData); } catch(err){}
+        try { await updateDoc(doc(db, 'recipes', editingRecipe.id), newRecipeData); } catch {}
       }
     } else {
       const newId = 'rec_' + Date.now();
-      const created = { ...newRecipeData, id: newId };
-      setRecipes([created, ...recipes]);
+      setRecipes(prev => [{ ...newRecipeData, id: newId }, ...prev]);
       if (db) {
-        try { await addDoc(collection(db, 'recipes'), { ...newRecipeData, createdAt: serverTimestamp() }); } catch(err){}
+        try { await addDoc(collection(db, 'recipes'), { ...newRecipeData, createdAt: serverTimestamp() }); } catch {}
       }
     }
 
     setIsRecipeModalOpen(false);
     setEditingRecipe(null);
     resetRecipeForm();
+    showToast(wasEditing ? 'Recipe updated!' : 'Recipe saved to family book!');
   };
 
   const openRecipeEdit = (recipe) => {
@@ -438,41 +525,46 @@ export default function App() {
   };
 
   const toggleFavorite = (id) => {
-    setRecipes(recipes.map(r => r.id === id ? { ...r, isFavorite: !r.isFavorite } : r));
+    setRecipes(prev => prev.map(r => r.id === id ? { ...r, isFavorite: !r.isFavorite } : r));
   };
 
   const deleteRecipe = (id) => {
-    setRecipes(recipes.filter(r => r.id !== id));
+    if (!window.confirm('Delete this recipe from your family collection?')) return;
+    setRecipes(prev => prev.filter(r => r.id !== id));
     if (db) {
-      try { deleteDoc(doc(db, 'recipes', id)); } catch(err){}
+      try { deleteDoc(doc(db, 'recipes', id)); } catch {}
     }
+    showToast('Recipe removed.');
   };
 
-  // Discovered Form Submission
+  // Save Discovered Dining Entry
   const handleSaveDiscovered = async (e) => {
     e.preventDefault();
     const newDiscoveredData = {
-      restaurant: discoveredForm.restaurant || 'Unknown Restaurant',
-      location: discoveredForm.location || 'Local Area',
-      dishName: discoveredForm.dishName || 'Tasty Dish',
+      restaurant: discoveredForm.restaurant.trim() || 'Unknown Restaurant',
+      location: discoveredForm.location.trim() || 'Local Area',
+      dishName: discoveredForm.dishName.trim() || 'Tasty Dish',
       rating: Number(discoveredForm.rating),
       priceTier: discoveredForm.priceTier,
-      tastingNotes: discoveredForm.tastingNotes,
+      tastingNotes: discoveredForm.tastingNotes.trim(),
       recreateAtHome: discoveredForm.recreateAtHome,
       photo: discoveredForm.photo || 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&q=80&w=800',
       dateAdded: new Date().toISOString().split('T')[0]
     };
 
+    const wasEditing = Boolean(editingDiscovered);
+
     if (editingDiscovered) {
-      setDiscoveredFoods(discoveredFoods.map(d => d.id === editingDiscovered.id ? { ...newDiscoveredData, id: editingDiscovered.id } : d));
+      setDiscoveredFoods(prev => prev.map(d => d.id === editingDiscovered.id ? { ...newDiscoveredData, id: editingDiscovered.id } : d));
     } else {
       const newId = 'disc_' + Date.now();
-      setDiscoveredFoods([{ ...newDiscoveredData, id: newId }, ...discoveredFoods]);
+      setDiscoveredFoods(prev => [{ ...newDiscoveredData, id: newId }, ...prev]);
     }
 
     setIsDiscoveredModalOpen(false);
     setEditingDiscovered(null);
     resetDiscoveredForm();
+    showToast(wasEditing ? 'Dining note updated!' : 'Dining discovery saved!');
   };
 
   const openDiscoveredEdit = (item) => {
@@ -491,10 +583,20 @@ export default function App() {
   };
 
   const deleteDiscovered = (id) => {
-    setDiscoveredFoods(discoveredFoods.filter(d => d.id !== id));
+    if (!window.confirm('Delete this dining discovery?')) return;
+    setDiscoveredFoods(prev => prev.filter(d => d.id !== id));
+    showToast('Entry deleted.');
   };
 
-  // Cooking Mode Timer Helpers
+  // Start Cook Mode
+  const openCookMode = (recipe) => {
+    setActiveCookModeRecipe(recipe);
+    setCookServings(recipe.servings || 1);
+    setCheckedIngredients({});
+    setIsTimerRunning(false);
+    setTimerSeconds(0);
+  };
+
   const startTimer = (minutes) => {
     setTimerSeconds(minutes * 60);
     setIsTimerRunning(true);
@@ -506,36 +608,56 @@ export default function App() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Filtering
-  const categories = ['All', 'Favorites', 'Italian', 'Japanese', 'Dinner', 'Breakfast', 'Dessert'];
+  // Unique Family Authors List
+  const familyAuthors = useMemo(() => {
+    const authors = new Set(recipes.map(r => r.author).filter(Boolean));
+    return ['All', ...Array.from(authors)];
+  }, [recipes]);
 
-  const filteredRecipes = recipes.filter(r => {
-    const matchesSearch = r.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          r.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          (r.author && r.author.toLowerCase().includes(searchQuery.toLowerCase()));
-    if (selectedCategory === 'All') return matchesSearch;
-    if (selectedCategory === 'Favorites') return matchesSearch && r.isFavorite;
-    return matchesSearch && r.category === selectedCategory;
-  });
+  // Memoized Filtering
+  const filteredRecipes = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return recipes.filter(r => {
+      const matchesSearch =
+        r.title.toLowerCase().includes(q) ||
+        r.category.toLowerCase().includes(q) ||
+        (r.author && r.author.toLowerCase().includes(q));
 
-  const filteredDiscovered = discoveredFoods.filter(d => 
-    d.dishName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    d.restaurant.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    d.location.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+      const matchesAuthor = selectedAuthor === 'All' || r.author === selectedAuthor;
+
+      if (!matchesSearch || !matchesAuthor) return false;
+      if (selectedCategory === 'All') return true;
+      if (selectedCategory === 'Favorites') return r.isFavorite;
+      return r.category === selectedCategory;
+    });
+  }, [recipes, searchQuery, selectedCategory, selectedAuthor]);
+
+  const filteredDiscovered = useMemo(() => {
+    const q = searchQuery.toLowerCase();
+    return discoveredFoods.filter(d =>
+      d.dishName.toLowerCase().includes(q) ||
+      d.restaurant.toLowerCase().includes(q) ||
+      d.location.toLowerCase().includes(q)
+    );
+  }, [discoveredFoods, searchQuery]);
+
+  // Serving Ratio for Active Cook Mode
+  const servingRatio = activeCookModeRecipe
+    ? cookServings / (activeCookModeRecipe.servings || 1)
+    : 1;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-24 selection:bg-amber-500 selection:text-slate-950">
       
       {/* HEADER BAR */}
-      <header className="sticky top-0 z-30 bg-slate-900/80 backdrop-blur-md border-b border-slate-800/80 px-4 py-4 md:px-8 transition-all">
-        <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
+      <header className="sticky top-0 z-30 bg-slate-900/85 backdrop-blur-lg border-b border-slate-800/80 px-4 py-3.5 md:px-8">
+        <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
           
-          {/* Editable App Title & Custom Logo */}
+          {/* Editable App Title & Logo */}
           <div className="flex items-center gap-3">
             <img 
               src="/recipe.jpg" 
-              alt="TastyLog Logo" 
+              alt="App Logo" 
               className="w-10 h-10 rounded-2xl object-cover shadow-lg border border-slate-700/60"
             />
             {isEditingTitle ? (
@@ -546,7 +668,7 @@ export default function App() {
                 onBlur={() => setIsEditingTitle(false)}
                 onKeyDown={(e) => e.key === 'Enter' && setIsEditingTitle(false)}
                 autoFocus
-                className="text-2xl font-black text-amber-400 bg-slate-800/90 border border-amber-500/50 rounded-lg px-2 py-0.5 outline-none focus:ring-2 focus:ring-amber-500"
+                className="text-xl md:text-2xl font-black text-amber-400 bg-slate-800 border border-amber-500/50 rounded-lg px-2 py-0.5 outline-none focus:ring-2 focus:ring-amber-500"
               />
             ) : (
               <div 
@@ -554,57 +676,73 @@ export default function App() {
                 className="group flex items-center gap-2 cursor-pointer"
                 title="Click to rename app"
               >
-                <h1 className="text-2xl font-black tracking-tight text-white group-hover:text-amber-400 transition-colors">
+                <h1 className="text-xl md:text-2xl font-black tracking-tight text-white group-hover:text-amber-400 transition-colors">
                   {appTitle}
                 </h1>
-                <Edit3 className="w-4 h-4 text-slate-500 group-hover:text-amber-400 opacity-0 group-hover:opacity-100 transition-all" />
+                <Edit3 className="w-3.5 h-3.5 text-slate-500 group-hover:text-amber-400 opacity-60 group-hover:opacity-100 transition-all" />
               </div>
             )}
           </div>
 
-          {/* Action Buttons */}
-          <div className="flex items-center gap-2 md:gap-3">
+          {/* Right Toolbar: Backup + Primary Action */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExportBackup}
+              title="Download JSON Backup"
+              className="p-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700/60 transition-colors"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+
+            <label
+              title="Restore JSON Backup"
+              className="p-2.5 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 border border-slate-700/60 transition-colors cursor-pointer"
+            >
+              <FolderUp className="w-4 h-4" />
+              <input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
+            </label>
+
             {activeTab === 'recipes' ? (
               <button
                 onClick={() => { resetRecipeForm(); setEditingRecipe(null); setIsRecipeModalOpen(true); }}
-                className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-amber-500/20 active:scale-95 text-sm md:text-base"
+                className="flex items-center gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-amber-500/20 active:scale-95 text-sm"
               >
-                <Plus className="w-5 h-5 stroke-[2.5]" />
-                <span className="hidden sm:inline">Add Recipe</span>
+                <Plus className="w-4 h-4 stroke-[2.5]" />
+                <span>Add Recipe</span>
               </button>
             ) : (
               <button
                 onClick={() => { resetDiscoveredForm(); setEditingDiscovered(null); setIsDiscoveredModalOpen(true); }}
-                className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-500/20 active:scale-95 text-sm md:text-base"
+                className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-emerald-500/20 active:scale-95 text-sm"
               >
-                <Plus className="w-5 h-5 stroke-[2.5]" />
-                <span className="hidden sm:inline">Log Dining Discovery</span>
+                <Plus className="w-4 h-4 stroke-[2.5]" />
+                <span>Log Discovery</span>
               </button>
             )}
           </div>
         </div>
       </header>
 
-      {/* NAVIGATION TABS & SEARCH */}
+      {/* MAIN CONTENT */}
       <main className="max-w-6xl mx-auto px-4 md:px-8 pt-6">
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 mb-8">
-          
-          {/* Main Tab Switcher */}
+        
+        {/* Navigation Tabs & Search */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 mb-6">
           <div className="flex bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800/80 shadow-inner">
             <button
               onClick={() => setActiveTab('recipes')}
-              className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-semibold text-sm transition-all ${
+              className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all ${
                 activeTab === 'recipes'
                   ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
               <ChefHat className="w-4 h-4" />
-              My Recipes ({recipes.length})
+              Family Recipes ({recipes.length})
             </button>
             <button
               onClick={() => setActiveTab('discovered')}
-              className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-semibold text-sm transition-all ${
+              className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm transition-all ${
                 activeTab === 'discovered'
                   ? 'bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20'
                   : 'text-slate-400 hover:text-slate-200'
@@ -615,12 +753,11 @@ export default function App() {
             </button>
           </div>
 
-          {/* Search Box */}
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
-              placeholder={activeTab === 'recipes' ? "Search dishes, categories, or family author..." : "Search restaurant, dish, or notes..."}
+              placeholder={activeTab === 'recipes' ? "Search dishes, categories, or family chef..." : "Search restaurant, dish, or notes..."}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 bg-slate-900/80 border border-slate-800 rounded-xl text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-amber-500/50 focus:ring-1 focus:ring-amber-500/50 transition-all"
@@ -628,42 +765,63 @@ export default function App() {
           </div>
         </div>
 
-        {/* RECIPES SECTION */}
+        {/* RECIPES VIEW */}
         {activeTab === 'recipes' && (
           <div>
-            {/* Categories pills */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-4 mb-6 scrollbar-none">
-              {categories.map((cat) => (
-                <button
-                  key={cat}
-                  onClick={() => setSelectedCategory(cat)}
-                  className={`px-4 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border ${
-                    selectedCategory === cat
-                      ? 'bg-amber-500/10 border-amber-500 text-amber-400'
-                      : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
-                  }`}
-                >
-                  {cat}
-                </button>
-              ))}
+            {/* Filter Controls: Categories + Family Authors */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-6 border-b border-slate-800/60">
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                {CATEGORIES.map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border ${
+                      selectedCategory === cat
+                        ? 'bg-amber-500/15 border-amber-500 text-amber-400'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              {familyAuthors.length > 1 && (
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500 mr-1">Chef:</span>
+                  {familyAuthors.map((author) => (
+                    <button
+                      key={author}
+                      onClick={() => setSelectedAuthor(author)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-all border ${
+                        selectedAuthor === author
+                          ? 'bg-slate-100 text-slate-950 border-white font-bold'
+                          : 'bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      {author}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Recipes Grid */}
             {filteredRecipes.length === 0 ? (
               <div className="text-center py-16 bg-slate-900/40 rounded-3xl border border-dashed border-slate-800">
                 <Utensils className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                <h3 className="text-lg font-bold text-slate-300">No recipes found</h3>
-                <p className="text-slate-500 text-sm mt-1">Try tweaking your search or add a brand new recipe.</p>
+                <h3 className="text-lg font-bold text-slate-300">No matching recipes</h3>
+                <p className="text-slate-500 text-sm mt-1">Clear your filters or add a new recipe to get started.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredRecipes.map((recipe) => (
                   <div 
                     key={recipe.id}
-                    className="group bg-slate-900/80 hover:border-slate-700/80 rounded-2xl overflow-hidden transition-all duration-300 hover:shadow-xl flex flex-col border-2"
+                    className="group bg-slate-900/90 rounded-2xl overflow-hidden transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl flex flex-col border-2"
                     style={{ borderColor: recipe.color || '#334155' }}
                   >
-                    {/* Card Cover Image with Author Badge */}
+                    {/* Cover Image */}
                     <div className="relative h-48 overflow-hidden bg-slate-800">
                       <img 
                         src={recipe.photo} 
@@ -671,23 +829,22 @@ export default function App() {
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                         onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&q=80&w=800'; }}
                       />
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-80" />
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-85" />
                       
                       <button
                         onClick={() => toggleFavorite(recipe.id)}
-                        className="absolute top-3 right-3 p-2 rounded-full bg-slate-950/60 backdrop-blur-md text-slate-300 hover:text-rose-400 transition-colors"
+                        className="absolute top-3 right-3 p-2 rounded-full bg-slate-950/70 backdrop-blur-md text-slate-300 hover:text-rose-400 transition-colors"
                       >
                         <Heart className={`w-4 h-4 ${recipe.isFavorite ? 'fill-rose-500 text-rose-500' : ''}`} />
                       </button>
 
-                      <span className="absolute bottom-3 left-3 px-2.5 py-1 bg-slate-950/80 backdrop-blur-md rounded-lg text-xs font-semibold text-amber-400 border border-amber-500/20">
+                      <span className="absolute bottom-3 left-3 px-2.5 py-1 bg-slate-950/85 backdrop-blur-md rounded-lg text-xs font-semibold text-amber-400 border border-amber-500/20">
                         {recipe.category}
                       </span>
 
-                      {/* Author Tag Badge */}
                       {recipe.author && (
                         <span 
-                          className="absolute top-3 left-3 px-3 py-1 rounded-full text-xs font-bold text-white shadow-md backdrop-blur-md flex items-center gap-1"
+                          className="absolute top-3 left-3 px-3 py-1 rounded-full text-xs font-bold text-white shadow-md flex items-center gap-1"
                           style={{ backgroundColor: recipe.color || '#f59e0b' }}
                         >
                           <User className="w-3 h-3" /> {recipe.author}
@@ -705,46 +862,45 @@ export default function App() {
                         <div className="flex items-center gap-4 text-xs text-slate-400 mt-2.5">
                           <span className="flex items-center gap-1">
                             <Clock className="w-3.5 h-3.5 text-amber-400" />
-                            {recipe.cookTime} mins
+                            {recipe.cookTime}m
                           </span>
                           <span className="flex items-center gap-1">
                             <Users className="w-3.5 h-3.5 text-amber-400" />
-                            {recipe.servings} Servings
+                            {recipe.servings} serv
                           </span>
                           {recipe.calories > 0 && (
-                            <span className="flex items-center gap-1">
+                            <span className="flex items-center gap-1 font-medium text-slate-300">
                               <Flame className="w-3.5 h-3.5 text-orange-400" />
                               {recipe.calories} kcal
                             </span>
                           )}
                         </div>
 
-                        {/* MACRONUTRIENT & FIBER BADGES */}
-                        <div className="mt-3.5 pt-3 border-t border-slate-800/60 grid grid-cols-4 gap-1 text-center text-[10px] font-semibold">
-                          <div className="bg-rose-500/10 text-rose-400 py-1 px-1 rounded-lg border border-rose-500/20">
+                        {/* Macro & Fiber Pills */}
+                        <div className="mt-3.5 pt-3 border-t border-slate-800/70 grid grid-cols-4 gap-1.5 text-center text-[10px] font-bold">
+                          <div className="bg-rose-500/10 text-rose-400 py-1 rounded-lg border border-rose-500/20">
                             P: {recipe.protein || 0}g
                           </div>
-                          <div className="bg-amber-500/10 text-amber-400 py-1 px-1 rounded-lg border border-amber-500/20">
+                          <div className="bg-amber-500/10 text-amber-400 py-1 rounded-lg border border-amber-500/20">
                             C: {recipe.carbs || 0}g
                           </div>
-                          <div className="bg-emerald-500/10 text-emerald-400 py-1 px-1 rounded-lg border border-emerald-500/20">
+                          <div className="bg-emerald-500/10 text-emerald-400 py-1 rounded-lg border border-emerald-500/20">
                             Fi: {recipe.fiber || 0}g
                           </div>
-                          <div className="bg-blue-500/10 text-blue-400 py-1 px-1 rounded-lg border border-blue-500/20">
+                          <div className="bg-blue-500/10 text-blue-400 py-1 rounded-lg border border-blue-500/20">
                             F: {recipe.fats || 0}g
                           </div>
                         </div>
-
                       </div>
 
-                      {/* Card Actions */}
+                      {/* Card Footer Actions */}
                       <div className="pt-4 mt-4 border-t border-slate-800/80 flex items-center justify-between gap-2">
                         <button
-                          onClick={() => setActiveCookModeRecipe(recipe)}
+                          onClick={() => openCookMode(recipe)}
                           className="flex-1 flex items-center justify-center gap-2 bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-200 font-semibold py-2 px-3 rounded-xl text-xs transition-all"
                         >
                           <Play className="w-3.5 h-3.5 fill-current" />
-                          Start Cooking
+                          Cook Mode
                         </button>
                         <button
                           onClick={() => openRecipeEdit(recipe)}
@@ -769,21 +925,21 @@ export default function App() {
           </div>
         )}
 
-        {/* DISCOVERED FOOD SECTION */}
+        {/* DISCOVERED FOOD VIEW */}
         {activeTab === 'discovered' && (
           <div>
             {filteredDiscovered.length === 0 ? (
               <div className="text-center py-16 bg-slate-900/40 rounded-3xl border border-dashed border-slate-800">
                 <Sparkles className="w-12 h-12 text-slate-600 mx-auto mb-3" />
                 <h3 className="text-lg font-bold text-slate-300">No dining discoveries logged</h3>
-                <p className="text-slate-500 text-sm mt-1">Keep track of delicious dishes you tried at restaurants!</p>
+                <p className="text-slate-500 text-sm mt-1">Save memorable restaurant dishes you want to try again or recreate!</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {filteredDiscovered.map((item) => (
                   <div 
                     key={item.id}
-                    className="bg-slate-900/80 border border-slate-800/80 rounded-2xl overflow-hidden flex flex-col sm:flex-row transition-all hover:border-emerald-500/30"
+                    className="bg-slate-900/90 border border-slate-800/80 rounded-2xl overflow-hidden flex flex-col sm:flex-row transition-all hover:border-emerald-500/40"
                   >
                     <div className="sm:w-2/5 relative h-48 sm:h-auto bg-slate-800">
                       <img 
@@ -793,7 +949,7 @@ export default function App() {
                         onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&q=80&w=800'; }}
                       />
                       {item.recreateAtHome && (
-                        <span className="absolute top-2 left-2 px-2 py-0.5 bg-emerald-500 text-slate-950 font-bold text-[10px] uppercase tracking-wider rounded-md shadow-md">
+                        <span className="absolute top-2.5 left-2.5 px-2.5 py-0.5 bg-emerald-500 text-slate-950 font-bold text-[10px] uppercase tracking-wider rounded-md shadow-md">
                           To Recreate
                         </span>
                       )}
@@ -823,7 +979,7 @@ export default function App() {
                         </div>
 
                         {item.tastingNotes && (
-                          <p className="text-xs text-slate-300 mt-3 bg-slate-950/50 p-2.5 rounded-xl border border-slate-800/50 italic line-clamp-3">
+                          <p className="text-xs text-slate-300 mt-3 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/60 italic line-clamp-3">
                             "{item.tastingNotes}"
                           </p>
                         )}
@@ -854,7 +1010,7 @@ export default function App() {
 
       {/* RECIPE MODAL (CREATE / EDIT) */}
       {isRecipeModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-2xl my-8 overflow-hidden shadow-2xl">
             <div className="p-6 border-b border-slate-800 flex items-center justify-between">
               <h2 className="text-xl font-bold text-slate-100">
@@ -870,7 +1026,6 @@ export default function App() {
 
             <form onSubmit={handleSaveRecipe} className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
               
-              {/* Recipe Title & Category */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="sm:col-span-2">
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Recipe Title</label>
@@ -890,24 +1045,21 @@ export default function App() {
                     onChange={(e) => setRecipeForm({ ...recipeForm, category: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-amber-500"
                   >
-                    <option value="Italian">Italian</option>
-                    <option value="Japanese">Japanese</option>
-                    <option value="Dinner">Dinner</option>
-                    <option value="Breakfast">Breakfast</option>
-                    <option value="Dessert">Dessert</option>
-                    <option value="Snack">Snack</option>
+                    {CATEGORIES.filter(c => c !== 'All' && c !== 'Favorites').map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
                   </select>
                 </div>
               </div>
 
-              {/* Family Creator Name & Color Theme Selector */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-950/60 p-4 rounded-2xl border border-slate-800/80">
                 <div>
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Created By</label>
                   <input
                     type="text"
                     required
-                    placeholder="Author's Name"                  value={recipeForm.author}
+                    placeholder="Author's Name"
+                    value={recipeForm.author}
                     onChange={(e) => setRecipeForm({ ...recipeForm, author: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-amber-500"
                   />
@@ -931,12 +1083,12 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Cooking Stats & Calories */}
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Prep/Cook (m)</label>
+                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Cook Time (m)</label>
                   <input
                     type="number"
+                    min="1"
                     value={recipeForm.cookTime}
                     onChange={(e) => setRecipeForm({ ...recipeForm, cookTime: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-amber-500"
@@ -946,6 +1098,7 @@ export default function App() {
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Servings</label>
                   <input
                     type="number"
+                    min="1"
                     value={recipeForm.servings}
                     onChange={(e) => setRecipeForm({ ...recipeForm, servings: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-amber-500"
@@ -955,6 +1108,7 @@ export default function App() {
                   <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Calories (kcal)</label>
                   <input
                     type="number"
+                    min="0"
                     value={recipeForm.calories}
                     onChange={(e) => setRecipeForm({ ...recipeForm, calories: e.target.value })}
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-sm text-slate-100 focus:outline-none focus:border-amber-500"
@@ -962,13 +1116,13 @@ export default function App() {
                 </div>
               </div>
 
-              {/* AUTOMATED MACRONUTRIENT & FIBER COUNTER */}
+              {/* Automated Macros & Fiber Counter */}
               <div className="bg-slate-950/70 p-4 rounded-2xl border border-slate-800/80">
                 <div className="flex items-center justify-between mb-3">
                   <label className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
                     <Activity className="w-4 h-4" /> Macros & Fiber Counter
                   </label>
-                  <span className="text-[11px] text-emerald-400 font-medium">✨ Auto-calculates as you type ingredients</span>
+                  <span className="text-[11px] text-emerald-400 font-medium">Auto-updates from ingredients</span>
                 </div>
 
                 <div className="grid grid-cols-4 gap-2">
@@ -976,6 +1130,7 @@ export default function App() {
                     <label className="block text-[11px] font-semibold text-rose-400 mb-1">Protein (g)</label>
                     <input
                       type="number"
+                      min="0"
                       value={recipeForm.protein}
                       onChange={(e) => setRecipeForm({ ...recipeForm, protein: e.target.value })}
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-rose-500"
@@ -985,6 +1140,7 @@ export default function App() {
                     <label className="block text-[11px] font-semibold text-amber-400 mb-1">Carbs (g)</label>
                     <input
                       type="number"
+                      min="0"
                       value={recipeForm.carbs}
                       onChange={(e) => setRecipeForm({ ...recipeForm, carbs: e.target.value })}
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-amber-500"
@@ -994,6 +1150,7 @@ export default function App() {
                     <label className="block text-[11px] font-semibold text-emerald-400 mb-1">Fiber (g)</label>
                     <input
                       type="number"
+                      min="0"
                       value={recipeForm.fiber}
                       onChange={(e) => setRecipeForm({ ...recipeForm, fiber: e.target.value })}
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-500"
@@ -1003,6 +1160,7 @@ export default function App() {
                     <label className="block text-[11px] font-semibold text-blue-400 mb-1">Fats (g)</label>
                     <input
                       type="number"
+                      min="0"
                       value={recipeForm.fats}
                       onChange={(e) => setRecipeForm({ ...recipeForm, fats: e.target.value })}
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-slate-100 focus:outline-none focus:border-blue-500"
@@ -1011,10 +1169,10 @@ export default function App() {
                 </div>
               </div>
 
-              {/* DASHED UPLOAD DISH IMAGE UI */}
+              {/* Photo Upload */}
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">RECIPE PHOTO</label>
-                <div className="relative border-2 border-dashed border-slate-700/60 hover:border-teal-500/60 rounded-2xl p-6 transition-colors text-center bg-slate-950/40">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Recipe Photo</label>
+                <div className="relative border-2 border-dashed border-slate-700/60 hover:border-teal-500/60 rounded-2xl p-5 transition-colors text-center bg-slate-950/40">
                   <input 
                     type="file" 
                     accept="image/*"
@@ -1026,9 +1184,9 @@ export default function App() {
                       <img src={recipeForm.photo} alt="Preview" className="w-16 h-16 object-cover rounded-xl border border-slate-700" />
                       <div className="text-left">
                         <p className="text-xs text-emerald-400 font-semibold flex items-center gap-1">
-                          <Check className="w-4 h-4" /> Image attached
+                          <Check className="w-4 h-4" /> Compressed & ready
                         </p>
-                        <p className="text-[11px] text-slate-500 mt-1">Click or drop a new image to replace</p>
+                        <p className="text-[11px] text-slate-500 mt-1">Tap to replace photo</p>
                       </div>
                     </div>
                   ) : (
@@ -1048,19 +1206,19 @@ export default function App() {
                   placeholder="200g chicken breast&#10;150g white rice&#10;100g broccoli"
                   value={recipeForm.ingredientsText}
                   onChange={(e) => handleIngredientsChange(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-100 focus:outline-none focus:border-amber-500 font-mono text-xs"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-100 focus:outline-none focus:border-amber-500 font-mono text-xs"
                 />
               </div>
 
               {/* Instructions */}
               <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Instructions (One per step)</label>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Cooking Steps (One per line)</label>
                 <textarea
                   rows="4"
-                  placeholder="Step 1: Prep ingredients&#10;Step 2: Heat pan..."
+                  placeholder="Prep ingredients&#10;Heat pan over medium heat..."
                   value={recipeForm.instructionsText}
                   onChange={(e) => setRecipeForm({ ...recipeForm, instructionsText: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-100 focus:outline-none focus:border-amber-500 font-mono text-xs"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-100 focus:outline-none focus:border-amber-500 font-mono text-xs"
                 />
               </div>
 
@@ -1086,7 +1244,7 @@ export default function App() {
 
       {/* DISCOVERED FOOD MODAL */}
       {isDiscoveredModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-xl my-8 overflow-hidden shadow-2xl">
             <div className="p-6 border-b border-slate-800 flex items-center justify-between">
               <h2 className="text-xl font-bold text-slate-100">
@@ -1167,10 +1325,9 @@ export default function App() {
                 </div>
               </div>
 
-              {/* DASHED UPLOAD DISH IMAGE UI */}
               <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">RECIPE PHOTO</label>
-                <div className="relative border-2 border-dashed border-slate-700/60 hover:border-teal-500/60 rounded-2xl p-6 transition-colors text-center bg-slate-950/40">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Dish Photo</label>
+                <div className="relative border-2 border-dashed border-slate-700/60 hover:border-teal-500/60 rounded-2xl p-5 transition-colors text-center bg-slate-950/40">
                   <input 
                     type="file" 
                     accept="image/*"
@@ -1182,9 +1339,9 @@ export default function App() {
                       <img src={discoveredForm.photo} alt="Preview" className="w-16 h-16 object-cover rounded-xl border border-slate-700" />
                       <div className="text-left">
                         <p className="text-xs text-emerald-400 font-semibold flex items-center gap-1">
-                          <Check className="w-4 h-4" /> Photo uploaded
+                          <Check className="w-4 h-4" /> Photo compressed & ready
                         </p>
-                        <p className="text-[11px] text-slate-500 mt-1">Click to select another picture</p>
+                        <p className="text-[11px] text-slate-500 mt-1">Tap to select another picture</p>
                       </div>
                     </div>
                   ) : (
@@ -1207,7 +1364,7 @@ export default function App() {
                 />
               </div>
 
-              <div className="flex items-center gap-3 pt-2">
+              <div className="flex items-center gap-3 pt-1">
                 <input
                   type="checkbox"
                   id="recreateToggle"
@@ -1240,12 +1397,11 @@ export default function App() {
         </div>
       )}
 
-      {/* INTERACTIVE COOKING MODE MODAL WITH MACROS & FIBER */}
+      {/* INTERACTIVE COOKING MODE MODAL WITH SERVING SCALER */}
       {activeCookModeRecipe && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-3xl my-8 overflow-hidden shadow-2xl">
             
-            {/* Modal Header */}
             <div className="p-6 border-b border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-amber-500/10 rounded-xl text-amber-400">
@@ -1254,7 +1410,7 @@ export default function App() {
                 <div>
                   <h2 className="text-xl font-bold text-slate-100">{activeCookModeRecipe.title}</h2>
                   <p className="text-xs text-slate-400">
-                    Created by <span className="text-amber-400 font-semibold">{activeCookModeRecipe.author || 'Family Member'}</span>
+                    Chef <span className="text-amber-400 font-semibold">{activeCookModeRecipe.author || 'Family Member'}</span>
                   </p>
                 </div>
               </div>
@@ -1268,31 +1424,66 @@ export default function App() {
 
             <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
               
-              {/* Macro & Fiber Bar Overview */}
-              <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 grid grid-cols-5 gap-1 text-center items-center">
-                <div>
-                  <div className="text-[10px] font-bold text-slate-400 uppercase">Cals</div>
-                  <div className="text-sm sm:text-base font-extrabold text-amber-400">{activeCookModeRecipe.calories || 0}</div>
+              {/* Scaled Macros & Serving Adjuster */}
+              <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <Users className="w-4 h-4 text-amber-400" /> Serving Scaler
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCookServings(prev => Math.max(1, prev - 1))}
+                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-sm"
+                    >
+                      -
+                    </button>
+                    <span className="text-sm font-bold text-amber-400 min-w-[4.5rem] text-center">
+                      {cookServings} {cookServings === 1 ? 'serving' : 'servings'}
+                    </span>
+                    <button
+                      onClick={() => setCookServings(prev => prev + 1)}
+                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-sm"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
-                <div>
-                  <div className="text-[10px] font-bold text-slate-400 uppercase">Protein</div>
-                  <div className="text-sm sm:text-base font-extrabold text-rose-400">{activeCookModeRecipe.protein || 0}g</div>
-                </div>
-                <div>
-                  <div className="text-[10px] font-bold text-slate-400 uppercase">Carbs</div>
-                  <div className="text-sm sm:text-base font-extrabold text-amber-400">{activeCookModeRecipe.carbs || 0}g</div>
-                </div>
-                <div>
-                  <div className="text-[10px] font-bold text-slate-400 uppercase">Fiber</div>
-                  <div className="text-sm sm:text-base font-extrabold text-emerald-400">{activeCookModeRecipe.fiber || 0}g</div>
-                </div>
-                <div>
-                  <div className="text-[10px] font-bold text-slate-400 uppercase">Fats</div>
-                  <div className="text-sm sm:text-base font-extrabold text-blue-400">{activeCookModeRecipe.fats || 0}g</div>
+
+                <div className="grid grid-cols-5 gap-1 text-center items-center">
+                  <div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase">Cals</div>
+                    <div className="text-sm sm:text-base font-extrabold text-amber-400">
+                      {Math.round((activeCookModeRecipe.calories || 0) * servingRatio)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase">Protein</div>
+                    <div className="text-sm sm:text-base font-extrabold text-rose-400">
+                      {Math.round((activeCookModeRecipe.protein || 0) * servingRatio)}g
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase">Carbs</div>
+                    <div className="text-sm sm:text-base font-extrabold text-amber-400">
+                      {Math.round((activeCookModeRecipe.carbs || 0) * servingRatio)}g
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase">Fiber</div>
+                    <div className="text-sm sm:text-base font-extrabold text-emerald-400">
+                      {Math.round((activeCookModeRecipe.fiber || 0) * servingRatio)}g
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-[10px] font-bold text-slate-400 uppercase">Fats</div>
+                    <div className="text-sm sm:text-base font-extrabold text-blue-400">
+                      {Math.round((activeCookModeRecipe.fats || 0) * servingRatio)}g
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* Kitchen Timer Widget */}
+              {/* Kitchen Timer */}
               <div className="bg-slate-950 p-5 rounded-2xl border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div>
                   <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
@@ -1330,40 +1521,47 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Grid with Checklist */}
+              {/* Ingredients Checklist & Steps */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                
-                {/* Ingredients Checklist */}
                 <div>
                   <h3 className="text-sm font-bold text-slate-200 mb-3 flex items-center gap-2">
                     <Bookmark className="w-4 h-4 text-amber-400" />
                     Ingredients Checklist
                   </h3>
-                  <div className="space-y-2 bg-slate-950/50 p-4 rounded-2xl border border-slate-800/80">
+                  <div className="space-y-2.5 bg-slate-950/50 p-4 rounded-2xl border border-slate-800/80">
                     {activeCookModeRecipe.ingredients && activeCookModeRecipe.ingredients.length > 0 ? (
-                      activeCookModeRecipe.ingredients.map((ing, idx) => (
-                        <label key={idx} className="flex items-center gap-3 text-xs text-slate-300 cursor-pointer hover:text-slate-100">
-                          <input type="checkbox" className="w-4 h-4 rounded accent-amber-500 bg-slate-900 border-slate-700" />
-                          <span>{ing}</span>
-                        </label>
-                      ))
+                      activeCookModeRecipe.ingredients.map((ing, idx) => {
+                        const isChecked = Boolean(checkedIngredients[idx]);
+                        return (
+                          <label key={idx} className="flex items-center gap-3 text-xs cursor-pointer group">
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => setCheckedIngredients(prev => ({ ...prev, [idx]: !prev[idx] }))}
+                              className="w-4 h-4 rounded accent-amber-500 bg-slate-900 border-slate-700"
+                            />
+                            <span className={isChecked ? 'line-through text-slate-500' : 'text-slate-200 group-hover:text-white'}>
+                              {scaleIngredientLine(ing, servingRatio)}
+                            </span>
+                          </label>
+                        );
+                      })
                     ) : (
                       <p className="text-xs text-slate-500 italic">No ingredients listed.</p>
                     )}
                   </div>
                 </div>
 
-                {/* Instructions */}
                 <div>
                   <h3 className="text-sm font-bold text-slate-200 mb-3 flex items-center gap-2">
                     <Utensils className="w-4 h-4 text-amber-400" />
-                    Steps
+                    Cooking Steps
                   </h3>
                   <div className="space-y-3">
                     {activeCookModeRecipe.instructions && activeCookModeRecipe.instructions.length > 0 ? (
                       activeCookModeRecipe.instructions.map((step, idx) => (
                         <div key={idx} className="bg-slate-950/50 p-3.5 rounded-2xl border border-slate-800/80 flex gap-3 text-xs text-slate-300">
-                          <span className="w-5 h-5 rounded-full bg-amber-500/10 text-amber-400 font-bold flex items-center justify-center shrink-0">
+                          <span className="w-5 h-5 rounded-full bg-amber-500/15 text-amber-400 font-bold flex items-center justify-center shrink-0">
                             {idx + 1}
                           </span>
                           <p className="leading-relaxed">{step}</p>
@@ -1374,7 +1572,6 @@ export default function App() {
                     )}
                   </div>
                 </div>
-
               </div>
             </div>
 
@@ -1387,6 +1584,24 @@ export default function App() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* SAVE / STATUS TOAST NOTIFICATION */}
+      {toast && (
+        <div
+          className={`fixed bottom-6 right-6 z-50 flex items-center gap-2.5 font-bold px-5 py-3.5 rounded-2xl shadow-2xl transition-all ${
+            toast.type === 'error'
+              ? 'bg-rose-500 text-white shadow-rose-500/30'
+              : 'bg-emerald-500 text-slate-950 shadow-emerald-500/30'
+          }`}
+        >
+          {toast.type === 'error' ? (
+            <AlertCircle className="w-5 h-5 stroke-[2.5]" />
+          ) : (
+            <CheckCircle2 className="w-5 h-5 stroke-[2.5]" />
+          )}
+          <span className="text-sm">{toast.message}</span>
         </div>
       )}
 
