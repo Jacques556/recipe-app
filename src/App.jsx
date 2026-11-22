@@ -212,7 +212,7 @@ export default function App() {
   const [activeCookModeRecipe, setActiveCookModeRecipe] = useState(null);
   const [cookServings, setCookServings] = useState(1);
   const [checkedIngredients, setCheckedIngredients] = useState({});
-  const [pendingDelete, setPendingDelete] = useState(null); // { type: 'recipe' | 'discovered', id: string, name: string }
+  const [pendingDelete, setPendingDelete] = useState(null);
   const [toast, setToast] = useState(null);
 
   const [appTitle, setAppTitle] = useState('TastyLog');
@@ -453,10 +453,13 @@ export default function App() {
     reader.readAsText(file);
   };
 
-  const handleSaveRecipe = async (e) => {
-    e.preventDefault();
+  const handleSaveRecipe = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+
     const ingredients = recipeForm.ingredientsText.split('\n').filter(i => i.trim() !== '');
     const instructions = recipeForm.instructionsText.split('\n').filter(i => i.trim() !== '');
+    const wasEditing = Boolean(editingRecipe);
+    const targetId = editingRecipe ? editingRecipe.id : 'rec_' + Date.now();
 
     const newRecipeData = {
       title: recipeForm.title.trim() || 'Untitled Dish',
@@ -477,18 +480,15 @@ export default function App() {
       updatedAt: new Date().toISOString()
     };
 
-    const wasEditing = Boolean(editingRecipe);
-
-    if (editingRecipe) {
-      setRecipes(prev => prev.map(r => r.id === editingRecipe.id ? { ...newRecipeData, id: editingRecipe.id } : r));
+    if (wasEditing) {
+      setRecipes(prev => prev.map(r => r.id === targetId ? { ...newRecipeData, id: targetId } : r));
       if (db) {
-        try { await updateDoc(doc(db, 'recipes', editingRecipe.id), newRecipeData); } catch {}
+        updateDoc(doc(db, 'recipes', targetId), newRecipeData).catch(() => {});
       }
     } else {
-      const newId = 'rec_' + Date.now();
-      setRecipes(prev => [{ ...newRecipeData, id: newId }, ...prev]);
+      setRecipes(prev => [{ ...newRecipeData, id: targetId }, ...prev]);
       if (db) {
-        try { await addDoc(collection(db, 'recipes'), { ...newRecipeData, createdAt: serverTimestamp() }); } catch {}
+        addDoc(collection(db, 'recipes'), { ...newRecipeData, createdAt: serverTimestamp() }).catch(() => {});
       }
     }
 
@@ -527,8 +527,12 @@ export default function App() {
     setPendingDelete({ type: 'recipe', id: recipe.id, name: recipe.title });
   };
 
-  const handleSaveDiscovered = async (e) => {
-    e.preventDefault();
+  const handleSaveDiscovered = (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+
+    const wasEditing = Boolean(editingDiscovered);
+    const targetId = editingDiscovered ? editingDiscovered.id : 'disc_' + Date.now();
+
     const newDiscoveredData = {
       restaurant: discoveredForm.restaurant.trim() || 'Unknown Restaurant',
       location: discoveredForm.location.trim() || 'Local Area',
@@ -541,13 +545,10 @@ export default function App() {
       dateAdded: new Date().toISOString().split('T')[0]
     };
 
-    const wasEditing = Boolean(editingDiscovered);
-
-    if (editingDiscovered) {
-      setDiscoveredFoods(prev => prev.map(d => d.id === editingDiscovered.id ? { ...newDiscoveredData, id: editingDiscovered.id } : d));
+    if (wasEditing) {
+      setDiscoveredFoods(prev => prev.map(d => d.id === targetId ? { ...newDiscoveredData, id: targetId } : d));
     } else {
-      const newId = 'disc_' + Date.now();
-      setDiscoveredFoods(prev => [{ ...newDiscoveredData, id: newId }, ...prev]);
+      setDiscoveredFoods(prev => [{ ...newDiscoveredData, id: targetId }, ...prev]);
     }
 
     setIsDiscoveredModalOpen(false);
@@ -575,21 +576,22 @@ export default function App() {
     setPendingDelete({ type: 'discovered', id: item.id, name: item.dishName });
   };
 
-  const confirmDelete = async () => {
+  const confirmDelete = () => {
     if (!pendingDelete) return;
 
-    if (pendingDelete.type === 'recipe') {
-      setRecipes(prev => prev.filter(r => r.id !== pendingDelete.id));
+    const { type, id } = pendingDelete;
+    setPendingDelete(null);
+
+    if (type === 'recipe') {
+      setRecipes(prev => prev.filter(r => r.id !== id));
       if (db) {
-        try { await deleteDoc(doc(db, 'recipes', pendingDelete.id)); } catch {}
+        deleteDoc(doc(db, 'recipes', id)).catch(() => {});
       }
       showToast('Recipe deleted!');
     } else {
-      setDiscoveredFoods(prev => prev.filter(d => d.id !== pendingDelete.id));
+      setDiscoveredFoods(prev => prev.filter(d => d.id !== id));
       showToast('Discovery deleted!');
     }
-
-    setPendingDelete(null);
   };
 
   const openCookMode = (recipe) => {
@@ -670,6 +672,7 @@ export default function App() {
               />
             ) : (
               <button
+                type="button"
                 onClick={() => setIsEditingTitle(true)}
                 className="flex items-center gap-1.5 text-left truncate group"
                 title="Tap to rename"
@@ -684,6 +687,7 @@ export default function App() {
 
           {activeTab === 'recipes' ? (
             <button
+              type="button"
               onClick={() => { resetRecipeForm(); setEditingRecipe(null); setIsRecipeModalOpen(true); }}
               className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs sm:text-sm whitespace-nowrap shrink-0 active:scale-95 transition-all"
             >
@@ -692,6 +696,7 @@ export default function App() {
             </button>
           ) : (
             <button
+              type="button"
               onClick={() => { resetDiscoveredForm(); setEditingDiscovered(null); setIsDiscoveredModalOpen(true); }}
               className="flex items-center gap-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs sm:text-sm whitespace-nowrap shrink-0 active:scale-95 transition-all"
             >
@@ -708,6 +713,7 @@ export default function App() {
         {/* SINGLE-LINE TABS */}
         <div className="grid grid-cols-2 gap-1.5 bg-slate-900 p-1 rounded-2xl border border-slate-800/80">
           <button
+            type="button"
             onClick={() => setActiveTab('recipes')}
             className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl font-semibold text-xs sm:text-sm whitespace-nowrap transition-all ${
               activeTab === 'recipes'
@@ -719,6 +725,7 @@ export default function App() {
             <span>Recipes ({recipes.length})</span>
           </button>
           <button
+            type="button"
             onClick={() => setActiveTab('discovered')}
             className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl font-semibold text-xs sm:text-sm whitespace-nowrap transition-all ${
               activeTab === 'discovered'
@@ -746,11 +753,11 @@ export default function App() {
         {/* RECIPES VIEW */}
         {activeTab === 'recipes' && (
           <div className="space-y-4">
-            {/* CATEGORY PILLS */}
             <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
               {CATEGORIES.map((cat) => (
                 <button
                   key={cat}
+                  type="button"
                   onClick={() => setSelectedCategory(cat)}
                   className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all border ${
                     selectedCategory === cat
@@ -763,12 +770,12 @@ export default function App() {
               ))}
             </div>
 
-            {/* AUTHOR PILLS (IF MULTIPLE CHEFS EXIST) */}
             {familyAuthors.length > 1 && (
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
                 {familyAuthors.map((author) => (
                   <button
                     key={author}
+                    type="button"
                     onClick={() => setSelectedAuthor(author)}
                     className={`px-3 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-all border ${
                       selectedAuthor === author
@@ -782,7 +789,6 @@ export default function App() {
               </div>
             )}
 
-            {/* RECIPE CARDS */}
             {filteredRecipes.length === 0 ? (
               <div className="text-center py-14 px-4 bg-slate-900/50 rounded-2xl border border-slate-800/80">
                 <Utensils className="w-10 h-10 text-slate-600 mx-auto mb-2.5" />
@@ -804,6 +810,7 @@ export default function App() {
                         onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&q=80&w=800'; }}
                       />
                       <button
+                        type="button"
                         onClick={() => toggleFavorite(recipe.id)}
                         className="absolute top-3 right-3 p-2 rounded-full bg-slate-950/75 text-slate-300 hover:text-rose-400"
                       >
@@ -833,6 +840,7 @@ export default function App() {
 
                       <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800/80">
                         <button
+                          type="button"
                           onClick={() => openCookMode(recipe)}
                           className="flex-1 flex items-center justify-center gap-1.5 bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-slate-100 font-semibold py-2 px-3 rounded-xl text-xs transition-colors"
                         >
@@ -840,6 +848,7 @@ export default function App() {
                           Cook
                         </button>
                         <button
+                          type="button"
                           onClick={() => openRecipeEdit(recipe)}
                           className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl"
                           title="Edit"
@@ -847,6 +856,7 @@ export default function App() {
                           <Edit3 className="w-4 h-4" />
                         </button>
                         <button
+                          type="button"
                           onClick={() => requestDeleteRecipe(recipe)}
                           className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-xl"
                           title="Delete"
@@ -921,12 +931,14 @@ export default function App() {
 
                       <div className="pt-2 border-t border-slate-800/80 flex items-center justify-end gap-2">
                         <button
+                          type="button"
                           onClick={() => openDiscoveredEdit(item)}
                           className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg"
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
                         <button
+                          type="button"
                           onClick={() => requestDeleteDiscovered(item)}
                           className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg"
                         >
@@ -945,7 +957,7 @@ export default function App() {
         <div className="pt-4 border-t border-slate-900 flex items-center justify-between text-xs text-slate-500">
           <span>Saved locally in your browser</span>
           <div className="flex items-center gap-3">
-            <button onClick={handleExportBackup} className="flex items-center gap-1 hover:text-slate-300">
+            <button type="button" onClick={handleExportBackup} className="flex items-center gap-1 hover:text-slate-300">
               <Download className="w-3.5 h-3.5" /> Export
             </button>
             <label className="flex items-center gap-1 hover:text-slate-300 cursor-pointer">
@@ -965,6 +977,7 @@ export default function App() {
                 {editingRecipe ? 'Edit Recipe' : 'Add New Recipe'}
               </h2>
               <button
+                type="button"
                 onClick={() => setIsRecipeModalOpen(false)}
                 className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800"
               >
@@ -978,7 +991,6 @@ export default function App() {
                   <label className="block text-xs font-semibold text-slate-400 mb-1.5">Recipe Title</label>
                   <input
                     type="text"
-                    required
                     placeholder="e.g. Garlic Butter Shrimp Pasta"
                     value={recipeForm.title}
                     onChange={(e) => setRecipeForm({ ...recipeForm, title: e.target.value })}
@@ -1004,8 +1016,7 @@ export default function App() {
                   <label className="block text-xs font-semibold text-slate-400 mb-1.5">Created By</label>
                   <input
                     type="text"
-                    required
-                    placeholder="Family member name"
+                    placeholder="Family member name (optional)"
                     value={recipeForm.author}
                     onChange={(e) => setRecipeForm({ ...recipeForm, author: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
@@ -1193,6 +1204,7 @@ export default function App() {
                 {editingDiscovered ? 'Edit Dining Entry' : 'Log Discovered Dish'}
               </h2>
               <button
+                type="button"
                 onClick={() => setIsDiscoveredModalOpen(false)}
                 className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800"
               >
@@ -1205,7 +1217,6 @@ export default function App() {
                 <label className="block text-xs font-semibold text-slate-400 mb-1.5">Dish Name</label>
                 <input
                   type="text"
-                  required
                   placeholder="e.g. Crispy Duck Confit"
                   value={discoveredForm.dishName}
                   onChange={(e) => setDiscoveredForm({ ...discoveredForm, dishName: e.target.value })}
@@ -1218,7 +1229,6 @@ export default function App() {
                   <label className="block text-xs font-semibold text-slate-400 mb-1.5">Restaurant</label>
                   <input
                     type="text"
-                    required
                     placeholder="e.g. Bistro Central"
                     value={discoveredForm.restaurant}
                     onChange={(e) => setDiscoveredForm({ ...discoveredForm, restaurant: e.target.value })}
@@ -1384,6 +1394,7 @@ export default function App() {
                 </p>
               </div>
               <button
+                type="button"
                 onClick={() => setActiveCookModeRecipe(null)}
                 className="p-2 text-slate-400 hover:text-white rounded-full hover:bg-slate-800"
               >
@@ -1399,6 +1410,7 @@ export default function App() {
                   </span>
                   <div className="flex items-center gap-2">
                     <button
+                      type="button"
                       onClick={() => setCookServings(prev => Math.max(1, prev - 1))}
                       className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm"
                     >
@@ -1408,6 +1420,7 @@ export default function App() {
                       {cookServings} {cookServings === 1 ? 'serving' : 'servings'}
                     </span>
                     <button
+                      type="button"
                       onClick={() => setCookServings(prev => prev + 1)}
                       className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-slate-700 text-white font-bold text-sm"
                     >
@@ -1462,6 +1475,7 @@ export default function App() {
                 <div className="flex items-center gap-2">
                   {!isTimerRunning ? (
                     <button
+                      type="button"
                       onClick={() => startTimer(activeCookModeRecipe.cookTime || 10)}
                       className="flex items-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs"
                     >
@@ -1470,6 +1484,7 @@ export default function App() {
                     </button>
                   ) : (
                     <button
+                      type="button"
                       onClick={() => setIsTimerRunning(false)}
                       className="flex items-center gap-1.5 bg-rose-500 text-slate-950 font-bold px-3.5 py-2 rounded-xl text-xs"
                     >
@@ -1478,6 +1493,7 @@ export default function App() {
                     </button>
                   )}
                   <button
+                    type="button"
                     onClick={() => { setIsTimerRunning(false); setTimerSeconds(0); }}
                     className="p-2 bg-slate-800 text-slate-300 hover:text-white rounded-xl"
                   >
@@ -1539,6 +1555,7 @@ export default function App() {
 
             <div className="p-4 border-t border-slate-800 flex justify-end">
               <button
+                type="button"
                 onClick={() => setActiveCookModeRecipe(null)}
                 className="px-5 py-2 rounded-xl bg-slate-800 text-slate-200 text-xs font-bold hover:bg-slate-700"
               >
