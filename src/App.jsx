@@ -5,6 +5,9 @@ import {
   Download, FolderUp, CheckCircle2, AlertCircle
 } from 'lucide-react';
 
+const FALLBACK_RECIPE_PHOTO = '/recipe.jpg';
+const FALLBACK_DISCOVERED_PHOTO = '/recipe.jpg';
+
 const COLOR_OPTIONS = [
   { name: 'Amber Gold', value: '#f59e0b' },
   { name: 'Emerald Green', value: '#10b981' },
@@ -121,7 +124,7 @@ const INITIAL_RECIPES = [
     isFavorite: true,
     author: 'Mom',
     color: '#f59e0b',
-    photo: 'https://images.unsplash.com/photo-1633964913295-ceb43826e7c9?auto=format&fit=crop&q=80&w=800',
+    photo: FALLBACK_RECIPE_PHOTO,
     ingredients: [
       '1.5 cups Arborio rice',
       '4 cups Warm vegetable broth',
@@ -151,7 +154,7 @@ const INITIAL_RECIPES = [
     isFavorite: false,
     author: 'James',
     color: '#3b82f6',
-    photo: 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&q=80&w=800',
+    photo: FALLBACK_RECIPE_PHOTO,
     ingredients: [
       '200g Salmon fillets',
       '150g Steamed Jasmine rice',
@@ -178,15 +181,20 @@ const INITIAL_DISCOVERED = [
     priceTier: '$$$',
     tastingNotes: 'Rich, buttery bone marrow topped with crispy parsley gremolata. Served with toasted house-made brioche.',
     recreateAtHome: true,
-    photo: 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&q=80&w=800',
+    photo: FALLBACK_DISCOVERED_PHOTO,
     dateAdded: '2026-10-18'
   }
 ];
 
+const handleOfflineImageError = (e, fallbackSrc) => {
+  if (e.currentTarget.dataset.fallbackApplied) return;
+  e.currentTarget.dataset.fallbackApplied = 'true';
+  e.currentTarget.src = fallbackSrc;
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState('recipes');
 
-  // Load initial state synchronously so it NEVER overwrites storage on mount
   const [recipes, setRecipes] = useState(() => {
     try {
       const seeded = localStorage.getItem(STORAGE_KEYS.SEEDED);
@@ -449,7 +457,7 @@ export default function App() {
       fiber: Number(recipeForm.fiber) || 0,
       author: recipeForm.author.trim() || 'Family Member',
       color: recipeForm.color || '#f59e0b',
-      photo: recipeForm.photo || 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&q=80&w=800',
+      photo: recipeForm.photo || FALLBACK_RECIPE_PHOTO,
       ingredients,
       instructions,
       isFavorite: editingRecipe ? editingRecipe.isFavorite : false,
@@ -511,7 +519,7 @@ export default function App() {
       priceTier: discoveredForm.priceTier,
       tastingNotes: discoveredForm.tastingNotes.trim(),
       recreateAtHome: discoveredForm.recreateAtHome,
-      photo: discoveredForm.photo || 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&q=80&w=800',
+      photo: discoveredForm.photo || FALLBACK_DISCOVERED_PHOTO,
       dateAdded: new Date().toISOString().split('T')[0]
     };
 
@@ -613,13 +621,13 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-24 selection:bg-amber-500 selection:text-slate-950">
 
-      {/* HEADER */}
       <header className="sticky top-0 z-30 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80 px-4 py-3 md:px-8">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
             <img
               src="/recipe.jpg"
               alt="App Logo"
+              onError={(e) => handleOfflineImageError(e, FALLBACK_RECIPE_PHOTO)}
               className="w-9 h-9 rounded-xl object-cover border border-slate-800 shrink-0"
             />
             {isEditingTitle ? (
@@ -669,10 +677,8 @@ export default function App() {
         </div>
       </header>
 
-      {/* MAIN CONTENT */}
       <main className="max-w-5xl mx-auto px-4 md:px-8 pt-4 space-y-4">
 
-        {/* TABS */}
         <div className="grid grid-cols-2 gap-1.5 bg-slate-900 p-1 rounded-2xl border border-slate-800/80">
           <button
             type="button"
@@ -700,7 +706,6 @@ export default function App() {
           </button>
         </div>
 
-        {/* SEARCH BAR */}
         <div className="relative">
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <input
@@ -712,7 +717,6 @@ export default function App() {
           />
         </div>
 
-        {/* RECIPES VIEW */}
         {activeTab === 'recipes' && (
           <div className="space-y-4">
             <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
@@ -766,10 +770,10 @@ export default function App() {
                   >
                     <div className="relative h-44 bg-slate-800">
                       <img
-                        src={recipe.photo}
+                        src={recipe.photo || FALLBACK_RECIPE_PHOTO}
                         alt={recipe.title}
                         className="w-full h-full object-cover"
-                        onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&q=80&w=800'; }}
+                        onError={(e) => handleOfflineImageError(e, FALLBACK_RECIPE_PHOTO)}
                       />
                       <button
                         type="button"
@@ -834,7 +838,6 @@ export default function App() {
           </div>
         )}
 
-        {/* DISCOVERED FOOD VIEW */}
         {activeTab === 'discovered' && (
           <div>
             {filteredDiscovered.length === 0 ? (
@@ -852,10 +855,10 @@ export default function App() {
                   >
                     <div className="sm:w-2/5 relative h-44 sm:h-auto bg-slate-800">
                       <img
-                        src={item.photo}
+                        src={item.photo || FALLBACK_DISCOVERED_PHOTO}
                         alt={item.dishName}
                         className="w-full h-full object-cover"
-                        onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&q=80&w=800'; }}
+                        onError={(e) => handleOfflineImageError(e, FALLBACK_DISCOVERED_PHOTO)}
                       />
                       {item.recreateAtHome && (
                         <span className="absolute top-2.5 left-2.5 px-2 py-0.5 bg-emerald-500 text-slate-950 font-bold text-[10px] uppercase rounded-md">
@@ -915,7 +918,6 @@ export default function App() {
           </div>
         )}
 
-        {/* BACKUP BAR */}
         <div className="pt-4 border-t border-slate-900 flex items-center justify-between text-xs text-slate-500">
           <span>Offline storage active</span>
           <div className="flex items-center gap-3">
@@ -930,7 +932,6 @@ export default function App() {
         </div>
       </main>
 
-      {/* RECIPE MODAL */}
       {isRecipeModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-2xl my-8 overflow-hidden shadow-2xl">
@@ -1157,7 +1158,6 @@ export default function App() {
         </div>
       )}
 
-      {/* DISCOVERED FOOD MODAL */}
       {isDiscoveredModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-xl my-8 overflow-hidden shadow-2xl">
@@ -1308,7 +1308,6 @@ export default function App() {
         </div>
       )}
 
-      {/* DELETE CONFIRMATION MODAL */}
       {pendingDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-sm p-6 shadow-2xl space-y-4">
@@ -1344,7 +1343,6 @@ export default function App() {
         </div>
       )}
 
-      {/* COOK MODE MODAL */}
       {activeCookModeRecipe && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md overflow-y-auto">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-3xl my-8 overflow-hidden shadow-2xl">
@@ -1528,7 +1526,6 @@ export default function App() {
         </div>
       )}
 
-      {/* CONFIRMATION TOAST */}
       {toast && (
         <div
           className={`fixed bottom-5 right-5 z-50 flex items-center gap-2 font-bold px-4 py-3 rounded-2xl shadow-xl text-xs sm:text-sm ${

@@ -15,6 +15,7 @@
   <link rel="apple-touch-icon" href="/recipe.jpg" />
 
   <!-- PWA / Mobile Web App Options -->
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="apple-mobile-web-app-title" content="TastyLog" />
@@ -24,6 +25,13 @@
 <body class="bg-slate-950 text-slate-100 min-h-screen antialiased">
   <div id="root"></div>
   <script type="module" src="/src/main.jsx"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js').catch(() => { });
+      });
+    }
+  </script>
 </body>
 
 </html>
