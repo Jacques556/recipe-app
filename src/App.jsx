@@ -1,30 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { initializeApp } from 'firebase/app';
-import {
-  getFirestore, collection, addDoc, onSnapshot, doc, updateDoc, deleteDoc, query, orderBy, serverTimestamp
-} from 'firebase/firestore';
 import {
   Utensils, Plus, Search, Trash2, Edit3, Heart, Clock, Users, Play, Pause, RotateCcw,
   MapPin, Star, Sparkles, X, Upload, Check, Bookmark, ChefHat, User, Activity,
   Download, FolderUp, CheckCircle2, AlertCircle
 } from 'lucide-react';
-
-const firebaseConfig = {
-  apiKey: "AIzaSyDemoKeyForTastyLogStorageSync123",
-  authDomain: "tastylog-app.firebaseapp.com",
-  projectId: "tastylog-app",
-  storageBucket: "tastylog-app.appspot.com",
-  messagingSenderId: "123456789012",
-  appId: "1:123456789012:web:abcdef123456"
-};
-
-let db = null;
-try {
-  const app = initializeApp(firebaseConfig);
-  db = getFirestore(app);
-} catch (e) {
-  console.warn("Firebase initialized in offline/local mode.");
-}
 
 const COLOR_OPTIONS = [
   { name: 'Amber Gold', value: '#f59e0b' },
@@ -36,6 +15,13 @@ const COLOR_OPTIONS = [
 ];
 
 const CATEGORIES = ['All', 'Favorites', 'Italian', 'Japanese', 'Dinner', 'Breakfast', 'Dessert', 'Snack'];
+
+const STORAGE_KEYS = {
+  RECIPES: 'irsov_recipes_v1',
+  DISCOVERED: 'irsov_discovered_v1',
+  TITLE: 'irsov_title_v1',
+  SEEDED: 'irsov_seeded_v1',
+};
 
 const calculateNutritionFromIngredients = (ingredientsText) => {
   const lines = ingredientsText.toLowerCase().split('\n');
@@ -199,8 +185,40 @@ const INITIAL_DISCOVERED = [
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('recipes');
-  const [recipes, setRecipes] = useState([]);
-  const [discoveredFoods, setDiscoveredFoods] = useState([]);
+
+  // Load initial state synchronously so it NEVER overwrites storage on mount
+  const [recipes, setRecipes] = useState(() => {
+    try {
+      const seeded = localStorage.getItem(STORAGE_KEYS.SEEDED);
+      const saved = localStorage.getItem(STORAGE_KEYS.RECIPES);
+      if (seeded === 'true') {
+        return saved ? JSON.parse(saved) : [];
+      }
+      localStorage.setItem(STORAGE_KEYS.SEEDED, 'true');
+      localStorage.setItem(STORAGE_KEYS.RECIPES, JSON.stringify(INITIAL_RECIPES));
+      return INITIAL_RECIPES;
+    } catch {
+      return INITIAL_RECIPES;
+    }
+  });
+
+  const [discoveredFoods, setDiscoveredFoods] = useState(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.DISCOVERED);
+      if (saved !== null) {
+        return JSON.parse(saved);
+      }
+      localStorage.setItem(STORAGE_KEYS.DISCOVERED, JSON.stringify(INITIAL_DISCOVERED));
+      return INITIAL_DISCOVERED;
+    } catch {
+      return INITIAL_DISCOVERED;
+    }
+  });
+
+  const [appTitle, setAppTitle] = useState(() => {
+    return localStorage.getItem(STORAGE_KEYS.TITLE) || "IRSOV'S";
+  });
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [selectedAuthor, setSelectedAuthor] = useState('All');
@@ -214,8 +232,6 @@ export default function App() {
   const [checkedIngredients, setCheckedIngredients] = useState({});
   const [pendingDelete, setPendingDelete] = useState(null);
   const [toast, setToast] = useState(null);
-
-  const [appTitle, setAppTitle] = useState('TastyLog');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
 
   const [timerSeconds, setTimerSeconds] = useState(0);
@@ -254,6 +270,58 @@ export default function App() {
     setTimeout(() => setToast(null), 3000);
   }, []);
 
+  const persistRecipes = (nextRecipes) => {
+    setRecipes(nextRecipes);
+    try {
+      localStorage.setItem(STORAGE_KEYS.RECIPES, JSON.stringify(nextRecipes));
+      localStorage.setItem(STORAGE_KEYS.SEEDED, 'true');
+      return true;
+    } catch {
+      showToast('Storage full! Try using a smaller photo.', 'error');
+      return false;
+    }
+  };
+
+  const persistDiscovered = (nextDiscovered) => {
+    setDiscoveredFoods(nextDiscovered);
+    try {
+      localStorage.setItem(STORAGE_KEYS.DISCOVERED, JSON.stringify(nextDiscovered));
+      return true;
+    } catch {
+      showToast('Storage full! Try using a smaller photo.', 'error');
+      return false;
+    }
+  };
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.TITLE, appTitle);
+    } catch {}
+  }, [appTitle]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setPendingDelete(null);
+        setIsRecipeModalOpen(false);
+        setIsDiscoveredModalOpen(false);
+        setActiveCookModeRecipe(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  useEffect(() => {
+    let interval = null;
+    if (isTimerRunning && timerSeconds > 0) {
+      interval = setInterval(() => setTimerSeconds(prev => prev - 1), 1000);
+    } else if (timerSeconds === 0) {
+      setIsTimerRunning(false);
+    }
+    return () => clearInterval(interval);
+  }, [isTimerRunning, timerSeconds]);
+
   const resetRecipeForm = () => {
     setRecipeForm({
       title: '',
@@ -286,99 +354,6 @@ export default function App() {
     });
   };
 
-  useEffect(() => {
-    const savedRecipes = localStorage.getItem('tastylog_recipes');
-    const savedDiscovered = localStorage.getItem('tastylog_discovered');
-    const savedTitle = localStorage.getItem('tastylog_title');
-
-    if (savedTitle) setAppTitle(savedTitle);
-
-    if (savedRecipes) {
-      try {
-        const parsed = JSON.parse(savedRecipes);
-        setRecipes(Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_RECIPES);
-      } catch {
-        setRecipes(INITIAL_RECIPES);
-      }
-    } else {
-      setRecipes(INITIAL_RECIPES);
-    }
-
-    if (savedDiscovered) {
-      try {
-        const parsed = JSON.parse(savedDiscovered);
-        setDiscoveredFoods(Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_DISCOVERED);
-      } catch {
-        setDiscoveredFoods(INITIAL_DISCOVERED);
-      }
-    } else {
-      setDiscoveredFoods(INITIAL_DISCOVERED);
-    }
-
-    if (db) {
-      try {
-        const qRecipes = query(collection(db, 'recipes'), orderBy('createdAt', 'desc'));
-        const unsubscribeRecipes = onSnapshot(qRecipes, (snapshot) => {
-          if (!snapshot.empty) {
-            const fbData = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-            setRecipes(fbData);
-          }
-        }, () => console.log('Firebase offline mode active'));
-
-        return () => unsubscribeRecipes && unsubscribeRecipes();
-      } catch {
-        console.log("Firebase listener unavailable");
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('tastylog_recipes', JSON.stringify(recipes));
-    } catch {
-      console.warn("LocalStorage quota limit reached for recipes.");
-    }
-  }, [recipes]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('tastylog_discovered', JSON.stringify(discoveredFoods));
-    } catch {
-      console.warn("LocalStorage quota limit reached for discoveries.");
-    }
-  }, [discoveredFoods]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('tastylog_title', appTitle);
-    } catch {
-      console.warn("LocalStorage quota limit reached for title.");
-    }
-  }, [appTitle]);
-
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (e.key === 'Escape') {
-        setPendingDelete(null);
-        setIsRecipeModalOpen(false);
-        setIsDiscoveredModalOpen(false);
-        setActiveCookModeRecipe(null);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
-
-  useEffect(() => {
-    let interval = null;
-    if (isTimerRunning && timerSeconds > 0) {
-      interval = setInterval(() => setTimerSeconds(prev => prev - 1), 1000);
-    } else if (timerSeconds === 0) {
-      setIsTimerRunning(false);
-    }
-    return () => clearInterval(interval);
-  }, [isTimerRunning, timerSeconds]);
-
   const handleImageUpload = (e, callback) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -388,7 +363,7 @@ export default function App() {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 800;
+        const MAX_WIDTH = 640;
         let width = img.width;
         let height = img.height;
 
@@ -402,7 +377,7 @@ export default function App() {
         const ctx = canvas.getContext('2d');
         ctx.drawImage(img, 0, 0, width, height);
 
-        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.72);
+        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.65);
         callback(compressedBase64);
       };
       img.src = event.target.result;
@@ -429,7 +404,7 @@ export default function App() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${appTitle.toLowerCase().replace(/\s+/g, '-')}-backup.json`;
+    a.download = `${appTitle.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-backup.json`;
     a.click();
     URL.revokeObjectURL(url);
     showToast('Backup downloaded!');
@@ -442,8 +417,8 @@ export default function App() {
     reader.onload = (ev) => {
       try {
         const parsed = JSON.parse(ev.target.result);
-        if (Array.isArray(parsed.recipes)) setRecipes(parsed.recipes);
-        if (Array.isArray(parsed.discoveredFoods)) setDiscoveredFoods(parsed.discoveredFoods);
+        if (Array.isArray(parsed.recipes)) persistRecipes(parsed.recipes);
+        if (Array.isArray(parsed.discoveredFoods)) persistDiscovered(parsed.discoveredFoods);
         if (parsed.appTitle) setAppTitle(parsed.appTitle);
         showToast('Backup restored!');
       } catch {
@@ -462,6 +437,7 @@ export default function App() {
     const targetId = editingRecipe ? editingRecipe.id : 'rec_' + Date.now();
 
     const newRecipeData = {
+      id: targetId,
       title: recipeForm.title.trim() || 'Untitled Dish',
       category: recipeForm.category,
       cookTime: Number(recipeForm.cookTime) || 15,
@@ -480,18 +456,14 @@ export default function App() {
       updatedAt: new Date().toISOString()
     };
 
-    if (wasEditing) {
-      setRecipes(prev => prev.map(r => r.id === targetId ? { ...newRecipeData, id: targetId } : r));
-      if (db) {
-        updateDoc(doc(db, 'recipes', targetId), newRecipeData).catch(() => {});
-      }
-    } else {
-      setRecipes(prev => [{ ...newRecipeData, id: targetId }, ...prev]);
-      if (db) {
-        addDoc(collection(db, 'recipes'), { ...newRecipeData, createdAt: serverTimestamp() }).catch(() => {});
-      }
-    }
+    const nextRecipes = wasEditing
+      ? recipes.map(r => (r.id === targetId ? newRecipeData : r))
+      : [newRecipeData, ...recipes];
 
+    persistRecipes(nextRecipes);
+    setSelectedCategory('All');
+    setSelectedAuthor('All');
+    setSearchQuery('');
     setIsRecipeModalOpen(false);
     setEditingRecipe(null);
     resetRecipeForm();
@@ -520,11 +492,8 @@ export default function App() {
   };
 
   const toggleFavorite = (id) => {
-    setRecipes(prev => prev.map(r => r.id === id ? { ...r, isFavorite: !r.isFavorite } : r));
-  };
-
-  const requestDeleteRecipe = (recipe) => {
-    setPendingDelete({ type: 'recipe', id: recipe.id, name: recipe.title });
+    const nextRecipes = recipes.map(r => (r.id === id ? { ...r, isFavorite: !r.isFavorite } : r));
+    persistRecipes(nextRecipes);
   };
 
   const handleSaveDiscovered = (e) => {
@@ -534,6 +503,7 @@ export default function App() {
     const targetId = editingDiscovered ? editingDiscovered.id : 'disc_' + Date.now();
 
     const newDiscoveredData = {
+      id: targetId,
       restaurant: discoveredForm.restaurant.trim() || 'Unknown Restaurant',
       location: discoveredForm.location.trim() || 'Local Area',
       dishName: discoveredForm.dishName.trim() || 'Tasty Dish',
@@ -545,12 +515,12 @@ export default function App() {
       dateAdded: new Date().toISOString().split('T')[0]
     };
 
-    if (wasEditing) {
-      setDiscoveredFoods(prev => prev.map(d => d.id === targetId ? { ...newDiscoveredData, id: targetId } : d));
-    } else {
-      setDiscoveredFoods(prev => [{ ...newDiscoveredData, id: targetId }, ...prev]);
-    }
+    const nextDiscovered = wasEditing
+      ? discoveredFoods.map(d => (d.id === targetId ? newDiscoveredData : d))
+      : [newDiscoveredData, ...discoveredFoods];
 
+    persistDiscovered(nextDiscovered);
+    setSearchQuery('');
     setIsDiscoveredModalOpen(false);
     setEditingDiscovered(null);
     resetDiscoveredForm();
@@ -572,24 +542,16 @@ export default function App() {
     setIsDiscoveredModalOpen(true);
   };
 
-  const requestDeleteDiscovered = (item) => {
-    setPendingDelete({ type: 'discovered', id: item.id, name: item.dishName });
-  };
-
   const confirmDelete = () => {
     if (!pendingDelete) return;
-
     const { type, id } = pendingDelete;
     setPendingDelete(null);
 
     if (type === 'recipe') {
-      setRecipes(prev => prev.filter(r => r.id !== id));
-      if (db) {
-        deleteDoc(doc(db, 'recipes', id)).catch(() => {});
-      }
+      persistRecipes(recipes.filter(r => r.id !== id));
       showToast('Recipe deleted!');
     } else {
-      setDiscoveredFoods(prev => prev.filter(d => d.id !== id));
+      persistDiscovered(discoveredFoods.filter(d => d.id !== id));
       showToast('Discovery deleted!');
     }
   };
@@ -651,7 +613,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-24 selection:bg-amber-500 selection:text-slate-950">
 
-      {/* CLEAN SINGLE-ROW HEADER */}
+      {/* HEADER */}
       <header className="sticky top-0 z-30 bg-slate-950/90 backdrop-blur-md border-b border-slate-800/80 px-4 py-3 md:px-8">
         <div className="max-w-5xl mx-auto flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5 min-w-0">
@@ -710,7 +672,7 @@ export default function App() {
       {/* MAIN CONTENT */}
       <main className="max-w-5xl mx-auto px-4 md:px-8 pt-4 space-y-4">
 
-        {/* SINGLE-LINE TABS */}
+        {/* TABS */}
         <div className="grid grid-cols-2 gap-1.5 bg-slate-900 p-1 rounded-2xl border border-slate-800/80">
           <button
             type="button"
@@ -857,7 +819,7 @@ export default function App() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => requestDeleteRecipe(recipe)}
+                          onClick={() => setPendingDelete({ type: 'recipe', id: recipe.id, name: recipe.title })}
                           className="p-2 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-xl"
                           title="Delete"
                         >
@@ -939,7 +901,7 @@ export default function App() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => requestDeleteDiscovered(item)}
+                          onClick={() => setPendingDelete({ type: 'discovered', id: item.id, name: item.dishName })}
                           className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded-lg"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -953,9 +915,9 @@ export default function App() {
           </div>
         )}
 
-        {/* QUIET BACKUP BAR AT BOTTOM */}
+        {/* BACKUP BAR */}
         <div className="pt-4 border-t border-slate-900 flex items-center justify-between text-xs text-slate-500">
-          <span>Saved locally in your browser</span>
+          <span>Offline storage active</span>
           <div className="flex items-center gap-3">
             <button type="button" onClick={handleExportBackup} className="flex items-center gap-1 hover:text-slate-300">
               <Download className="w-3.5 h-3.5" /> Export
@@ -1016,7 +978,7 @@ export default function App() {
                   <label className="block text-xs font-semibold text-slate-400 mb-1.5">Created By</label>
                   <input
                     type="text"
-                    placeholder="Family member name (optional)"
+                    placeholder="Family member name"
                     value={recipeForm.author}
                     onChange={(e) => setRecipeForm({ ...recipeForm, author: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3.5 py-2 text-sm text-white focus:outline-none focus:border-amber-500"
@@ -1346,7 +1308,7 @@ export default function App() {
         </div>
       )}
 
-      {/* IN-APP DELETE CONFIRMATION MODAL */}
+      {/* DELETE CONFIRMATION MODAL */}
       {pendingDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-sm p-6 shadow-2xl space-y-4">
